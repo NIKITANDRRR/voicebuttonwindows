@@ -1,7 +1,7 @@
 """
-VoiceButton — push-to-talk transcription via Right Alt.
-Records mic while Right Alt is held, transcribes with faster-whisper (CUDA),
-types result into the active window.
+VoiceButton — push-to-talk transcription via F12.
+Records mic while F12 is held, transcribes with faster-whisper (CUDA),
+pastes result into the active window via Ctrl+V.
 """
 
 import sys
