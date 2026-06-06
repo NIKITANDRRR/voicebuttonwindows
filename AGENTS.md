@@ -1,15 +1,16 @@
 # AGENTS.md — VoiceButton
 
 ## Project
-Push-to-talk voice transcription for Windows. Hold F12, speak, release → text pasted into active window.
+Push-to-talk voice transcription for Windows. Hold F9, speak, release → text pasted into active window at cursor position. Clipboard is preserved.
 
 ## Architecture
 Single-file app: `voicebutton.py`
 
-Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe → pyperclip+pyautogui paste
+Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe → save clipboard → pyperclip+Ctrl+V → restore clipboard
 
 ## Key Decisions
-- **Hotkey: F12** — Right Alt = AltGr on RU layout (not detectable by `keyboard` lib), Scroll Lock = OS-handled
+- **Hotkey: F9** — Right Shift caused Windows Sticky Keys popup on hold; Right Alt = AltGr on RU layout (not detectable); Scroll Lock = OS-handled; F9 is unused and clean
+- **Cursor-position paste via Ctrl+V** — uses clipboard for instant paste (faster than char-by-char). Clipboard is saved before paste and restored ~250ms after, so user's existing clipboard content survives
 - **Mic: Jabra Speak 710** — Realtek default records silence. MIC_DEVICE config supports substring match
 - **Admin required** — `keyboard` hook needs elevated privileges on Windows
 - **VAD model** — `silero_vad_v6.onnx` must be included in PyInstaller datas (spec file)
@@ -36,4 +37,4 @@ Output: `dist/voicebutton.exe`
 | MIC_DEVICE | "Jabra" | substring match on device name, None=default |
 | LANGUAGE | None | None=auto, "ru"=force Russian |
 | BEAM_SIZE | 5 | beam search width |
-| HOTKEY | f12 | push-to-talk trigger |
+| HOTKEY | f9 | push-to-talk trigger |

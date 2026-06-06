@@ -1,7 +1,8 @@
 """
-VoiceButton — push-to-talk transcription via F12.
-Records mic while F12 is held, transcribes with faster-whisper (CUDA),
-pastes result into the active window via Ctrl+V.
+VoiceButton — push-to-talk transcription via F9.
+Records mic while F9 is held, transcribes with faster-whisper (CUDA),
+pastes result into the active window at cursor position via Ctrl+V.
+Clipboard is preserved — saved before paste, restored after.
 """
 
 import sys
@@ -17,7 +18,7 @@ SAMPLE_RATE = 16000         # whisper expects 16kHz
 MIC_DEVICE = "Jabra"       # None = default, or device number/name string
 LANGUAGE = None             # None = auto-detect, "ru" = force Russian
 BEAM_SIZE = 5               # beam search width
-HOTKEY = "f12"              # trigger key
+HOTKEY = "f9"               # trigger key (push-to-talk)
 # ────────────────────────────────────────────────────────
 
 
@@ -123,13 +124,42 @@ def main():
                 print("[VoiceButton] (no speech detected)")
 
     def type_text(text):
-        """Type text into the currently active window."""
+        """Paste text into the currently active window at cursor position.
+
+        Strategy: save clipboard, copy our text, Ctrl+V, restore clipboard.
+        A small delay before paste lets the released Shift modifier flush
+        so we don't accidentally trigger Ctrl+Shift+V (which is "paste as
+        plain text" in some apps / different action in terminals).
+        """
         import pyautogui
         import pyperclip
 
-        # Use clipboard for instant paste — much faster than char-by-char typing
+        # Save current clipboard so we don't clobber user's data
+        try:
+            saved = pyperclip.paste()
+        except Exception:
+            saved = None
+
+        # Brief pause to ensure Shift modifier is fully released before we
+        # simulate Ctrl+V — otherwise we'd send Ctrl+Shift+V.
+        time.sleep(0.08)
+
         pyperclip.copy(text)
         pyautogui.hotkey("ctrl", "v")
+
+        # Restore clipboard shortly after — paste needs the new content to
+        # actually be in the clipboard when Ctrl+V is processed.
+        def _restore():
+            time.sleep(0.25)
+            try:
+                if saved is not None:
+                    pyperclip.copy(saved)
+                else:
+                    pyperclip.copy("")
+            except Exception:
+                pass
+
+        threading.Thread(target=_restore, daemon=True).start()
 
     # Resolve mic device
     mic_dev = MIC_DEVICE
