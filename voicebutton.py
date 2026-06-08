@@ -81,6 +81,27 @@ if LOG_FILE:
 
 # ── Helper functions ─────────────────────────────────────
 
+
+def detect_device():
+    """Auto-detect best device. Returns (device, compute_type).
+
+    Checks if CUDA is available via ctranslate2 (the backend faster-whisper uses).
+    Falls back to CPU if no NVIDIA driver/CUDA toolkit is installed.
+    """
+    try:
+        import ctranslate2
+        cuda_count = ctranslate2.get_cuda_device_count()
+        if cuda_count > 0:
+            log.info(f"CUDA detected ({cuda_count} device(s)) — using GPU")
+            return ("cuda", "float16")
+        else:
+            log.warning("No CUDA device found via ctranslate2 — falling back to CPU")
+            return ("cpu", "int8")
+    except Exception as e:
+        log.warning(f"CUDA check failed ({e}) — falling back to CPU")
+        return ("cpu", "int8")
+
+
 def get_vram_mb():
     """Get GPU VRAM in MB via nvidia-smi. Returns None if unavailable."""
     try:
@@ -256,8 +277,19 @@ def main():
         if d["max_input_channels"] > 0:
             log.info(f"  #{i}: {d['name']} (in:{d['max_input_channels']})")
 
+    # Auto-detect device (CUDA or CPU fallback)
+    device, compute_type = detect_device()
+    if device != DEVICE or compute_type != COMPUTE_TYPE:
+        log.info(f"Device overridden: config had {DEVICE}/{COMPUTE_TYPE}, using {device}/{compute_type}")
+
     # Load model (with VRAM check + loading window)
-    model = load_model_with_ui(MODEL_SIZE, DEVICE, COMPUTE_TYPE, MODEL_CACHE_DIR)
+    model = load_model_with_ui(MODEL_SIZE, device, compute_type, MODEL_CACHE_DIR)
+
+    # Show notification if running on CPU (no NVIDIA driver)
+    if device == "cpu":
+        cpu_nag = True
+    else:
+        cpu_nag = False
 
     # Resolve mic device
     mic_dev = MIC_DEVICE
@@ -461,15 +493,19 @@ def main():
         keyboard.unhook_all()
         icon.stop()
 
+    tooltip = "VoiceButton — Ready"
+    if cpu_nag:
+        tooltip = "VoiceButton — CPU mode (no GPU)"
+
     icon = pystray.Icon(
         "VoiceButton",
         mic_icon(False),
-        "VoiceButton — Ready",
+        tooltip,
         menu=pystray.Menu(
             pystray.MenuItem("VoiceButton", None, enabled=False),
             pystray.MenuItem("F9 hold = talk, 2x = continuous", None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE}", None, enabled=False),
+            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
             pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
             pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
             pystray.Menu.SEPARATOR,

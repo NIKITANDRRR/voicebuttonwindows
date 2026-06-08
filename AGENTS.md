@@ -16,6 +16,7 @@ Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (wi
 - **Cursor-position paste via Ctrl+V** — uses keyboard library (not pyautogui) for key simulation. Clipboard saved before paste, restored 300ms after
 - **Mic: Jabra Speak 710** — Realtek default records silence. MIC_DEVICE config supports substring match
 - **Admin required** — `keyboard` hook needs elevated privileges on Windows
+- **Auto CPU fallback** — если нет NVIDIA драйвера/CUDA, программа сама переключается на CPU (int8). Пользователь видит в трее "CPU mode (no GPU)"
 - **VAD model** — `silero_vad_v6.onnx` must be included in PyInstaller datas (spec file)
 
 ## Build
