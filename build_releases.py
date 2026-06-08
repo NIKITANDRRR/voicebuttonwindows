@@ -46,6 +46,8 @@ def build(out_name: str):
     )
     built = ROOT / "dist" / "voicebutton.exe"
     target = ROOT / "dist" / out_name
+    if target.exists():
+        target.unlink()
     shutil.move(str(built), str(target))
     size_mb = target.stat().st_size / 1048576
     print(f"Done: {target}  ({size_mb:.0f} MB)")
