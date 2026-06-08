@@ -181,8 +181,7 @@ def load_model_with_ui(model_size, device, compute_type, download_root):
                 "VoiceButton — Not Enough VRAM",
                 f"Whisper {model_size} requires ~{required_gb} GB VRAM.\n"
                 f"Your GPU has {vram_gb:.0f} GB.\n\n"
-                f"Please use voicebutton-medium.exe instead.\n"
-                f"(or set DEVICE=\"cpu\" in voicebutton.py)",
+                f"Please use voicebutton-medium.exe instead.",
             )
             log.error(f"VRAM check failed: {vram_gb:.1f} GB < {required_gb} GB required")
             sys.exit(1)
@@ -225,8 +224,7 @@ def load_model_with_ui(model_size, device, compute_type, download_root):
         err_str = str(result["error"])
         show_error_dialog(
             "VoiceButton — Error",
-            f"Failed to load Whisper {model_size}:\n{err_str}\n\n"
-            f"If this is a memory error, try voicebutton-medium.exe.",
+            f"Failed to load Whisper {model_size}:\n{err_str}",
         )
         sys.exit(1)
 
