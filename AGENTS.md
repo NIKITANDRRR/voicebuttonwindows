@@ -44,3 +44,16 @@ Output: `dist/voicebutton.exe`
 | DOUBLE_PRESS_THRESHOLD | 0.35 | seconds — max gap for double-click continuous mode |
 | INITIAL_PROMPT | "Привет, как..." | Russian text hint for punctuation |
 | LOG_FILE | %TEMP%\voicebutton.log | log file path |
+| LOG_MAX_BYTES | 1048576 | 1 MB — log rotation threshold |
+| LOG_BACKUP_COUNT | 3 | number of rotated backup files |
+
+## Releases
+
+Two pre-built EXE variants are distributed via GitHub Releases:
+
+| Build | MODEL_SIZE | VRAM | Target GPU |
+|-------|-----------|------|------------|
+| voicebutton-medium.exe | medium | 6 GB+ | RTX 2060/3060/4060 |
+| voicebutton-large.exe | large-v3 | 10 GB+ | RTX 3080/4070/4080 |
+
+Build both via `python build_releases.py` (patches MODEL_SIZE, runs PyInstaller, renames output, restores original).

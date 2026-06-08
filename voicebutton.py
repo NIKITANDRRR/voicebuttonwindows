@@ -33,13 +33,22 @@ DOUBLE_PRESS_THRESHOLD = 0.35  # seconds — max gap for double-click detection
 INITIAL_PROMPT = "Привет, как дела? Это пример текста с запятыми, точками и вопросительными знаками."
 
 LOG_FILE = os.path.join(tempfile.gettempdir(), "voicebutton.log")
+LOG_MAX_BYTES = 1_048_576  # 1 MB per file
+LOG_BACKUP_COUNT = 3       # keep last 3 rotated files (4 MB total max)
 # ────────────────────────────────────────────────────────
 
-# Logging (file-based since no console in tray mode)
+# Logging (file-based since no console in tray mode).
+# Rotating handler prevents log from filling up disk.
 log = logging.getLogger("voicebutton")
 log.setLevel(logging.INFO)
 if LOG_FILE:
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    from logging.handlers import RotatingFileHandler
+    fh = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding="utf-8",
+    )
     fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     log.addHandler(fh)
 

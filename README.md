@@ -40,10 +40,19 @@ VoiceButton sits in your system tray and lets you dictate text into **any** appl
 
 ### Option 1: Ready-to-use EXE (recommended)
 
+Two builds are available depending on your GPU:
+
+| Build | Model | VRAM required | Accuracy | Speed | Best for |
+|-------|-------|---------------|----------|-------|----------|
+| **voicebutton-medium.exe** | Whisper medium | **6 GB+** | Good | Fast (~1s / 5s speech) | RTX 2060, 3060, 4060 and similar |
+| **voicebutton-large.exe** | Whisper large-v3 | **10 GB+** | Best | Slower (~3s / 5s speech) | RTX 3080, 4070, 4080 and similar |
+
 1. Go to [Releases](../../releases)
-2. Download `voicebutton.exe`
+2. Download the EXE matching your GPU
 3. **Right-click → Run as Administrator** (required for keyboard hook)
 4. Hold F9 and speak
+
+> **Which one to choose?** If unsure, start with `voicebutton-medium.exe`. It runs on most modern GPUs and accuracy is already very good for Russian and English.
 
 ### Option 2: From source
 
@@ -88,6 +97,15 @@ pyinstaller voicebutton.spec
 
 Output: `dist/voicebutton.exe`
 
+### Building both releases (medium + large)
+
+```bash
+# Build medium (default)
+python build_releases.py
+```
+
+This script builds both `voicebutton-medium.exe` (Whisper medium) and `voicebutton-large.exe` (Whisper large-v3) into `dist/`.
+
 ## How it works
 
 ```
@@ -104,6 +122,8 @@ When running as tray app, logs are written to:
 ```
 %TEMP%\voicebutton.log
 ```
+
+Logs auto-rotate: max 1 MB per file, 3 backup files kept (4 MB total).
 
 ## License
 
