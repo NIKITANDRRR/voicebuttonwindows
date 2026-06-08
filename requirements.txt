@@ -4,3 +4,5 @@ sounddevice
 keyboard
 pyautogui
 pyperclip
+pystray
+Pillow

@@ -1,168 +1,204 @@
 """
 VoiceButton — push-to-talk transcription via F9.
-Records mic while F9 is held, transcribes with faster-whisper (CUDA),
-pastes result into the active window at cursor position via Ctrl+V.
-Clipboard is preserved — saved before paste, restored after.
+
+Hold F9 to record, release to transcribe and paste at cursor.
+Double-click F9 (quick press-release-press) for continuous mode —
+keeps recording until next F9 press.
+
+Pastes result into active window at cursor position via Ctrl+V.
+Runs as system tray icon (no console window).
 """
 
 import sys
+import os
 import time
 import threading
+import logging
+import tempfile
 import numpy as np
 
 # ── Config ──────────────────────────────────────────────
-MODEL_SIZE = "medium"       # whisper model: tiny/base/small/medium/large-v2/large-v3
+MODEL_SIZE = "medium"       # tiny/base/small/medium/large-v2/large-v3
 DEVICE = "cuda"             # "cuda" or "cpu"
 COMPUTE_TYPE = "float16"    # float16 for GPU, int8 for CPU
 SAMPLE_RATE = 16000         # whisper expects 16kHz
-MIC_DEVICE = "Jabra"       # None = default, or device number/name string
+MIC_DEVICE = "Jabra"        # None = default, or substring match on device name
 LANGUAGE = None             # None = auto-detect, "ru" = force Russian
 BEAM_SIZE = 5               # beam search width
-HOTKEY = "f9"               # trigger key (push-to-talk)
+HOTKEY = "f9"               # trigger key
+DOUBLE_PRESS_THRESHOLD = 0.35  # seconds — max gap for double-click detection
+
+# Initial prompt gives Whisper a hint to add punctuation in Russian.
+# Without it, Whisper often omits commas and periods in dictation.
+INITIAL_PROMPT = "Привет, как дела? Это пример текста с запятыми, точками и вопросительными знаками."
+
+LOG_FILE = os.path.join(tempfile.gettempdir(), "voicebutton.log")
 # ────────────────────────────────────────────────────────
+
+# Logging (file-based since no console in tray mode)
+log = logging.getLogger("voicebutton")
+log.setLevel(logging.INFO)
+if LOG_FILE:
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    log.addHandler(fh)
 
 
 def main():
     import ctypes
     import keyboard
     import sounddevice as sd
+    import pystray
+    from PIL import Image, ImageDraw
     from faster_whisper import WhisperModel
 
     # Check admin rights (keyboard hook needs it on Windows)
     if sys.platform == "win32":
         is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
         if not is_admin:
-            print("[VoiceButton] WARNING: Not running as Administrator!")
-            print("[VoiceButton] Keyboard hook may not work. Re-run as admin.")
+            log.warning("Not running as Administrator — keyboard hook may fail")
         else:
-            print("[VoiceButton] Running as Administrator — OK")
+            log.info("Running as Administrator — OK")
 
-    # List audio devices to help debug mic issues
-    print("[VoiceButton] Audio devices:")
+    # List audio devices
+    log.info("Audio devices:")
     devices = sd.query_devices()
     default_in = sd.default.device[0]
-    print(f"  Default input: device #{default_in}")
+    log.info(f"  Default input: device #{default_in}")
     for i, d in enumerate(devices):
-        if d['max_input_channels'] > 0:
-            marker = " <-- DEFAULT" if i == default_in else ""
-            print(f"  #{i}: {d['name']} (in:{d['max_input_channels']}){marker}")
+        if d["max_input_channels"] > 0:
+            log.info(f"  #{i}: {d['name']} (in:{d['max_input_channels']})")
 
     # Load model
-    print(f"[VoiceButton] Loading model '{MODEL_SIZE}' on {DEVICE}...")
-    model = WhisperModel(
-        MODEL_SIZE,
-        device=DEVICE,
-        compute_type=COMPUTE_TYPE,
-    )
-    print(f"[VoiceButton] Model loaded. Press and hold [{HOTKEY}] to record.")
+    log.info(f"Loading model '{MODEL_SIZE}' on {DEVICE}...")
+    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    log.info("Model loaded.")
 
-    # Recording state
+    # Resolve mic device
+    mic_dev = MIC_DEVICE
+    if mic_dev is not None and isinstance(mic_dev, str):
+        for i, d in enumerate(sd.query_devices()):
+            if d["max_input_channels"] > 0 and mic_dev.lower() in d["name"].lower():
+                mic_dev = i
+                log.info(f"Mic matched: #{i} {sd.query_devices(i)['name']}")
+                break
+        else:
+            log.warning(f"Mic '{MIC_DEVICE}' not found, using default")
+
+    # ── State ───────────────────────────────────────────────
     recording = {"active": False, "frames": [], "lock": threading.Lock()}
+    # mode: "idle" | "ptt" (push-to-talk, waiting for release) | "continuous"
+    state = {"mode": "idle", "release_timer": None}
+    icon_ref = {"icon": None}  # filled after icon creation
 
+    # ── Tray icon ───────────────────────────────────────────
+    def mic_icon(is_recording=False):
+        """Draw a simple microphone icon. Red when recording, green when idle."""
+        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        color = (255, 80, 80, 255) if is_recording else (100, 200, 100, 255)
+        # Mic body (rounded rectangle)
+        draw.rounded_rectangle([24, 8, 40, 32], radius=8, fill=color)
+        # Arc stand
+        draw.arc([16, 20, 48, 50], start=0, end=180, fill=color, width=3)
+        # Stem
+        draw.line([32, 48, 32, 56], fill=color, width=3)
+        # Base
+        draw.line([24, 56, 40, 56], fill=color, width=3)
+        return img
+
+    def set_tray(recording_active, text):
+        if icon_ref["icon"]:
+            icon_ref["icon"].icon = mic_icon(recording_active)
+            icon_ref["icon"].title = f"VoiceButton — {text}"
+
+    # ── Audio ───────────────────────────────────────────────
     def audio_callback(indata, frames, time_info, status):
-        """Called by sounddevice for each audio chunk."""
         if recording["active"]:
             recording["frames"].append(indata.copy())
 
-    def on_press(event):
-        if not recording["active"]:
-            recording["active"] = True
+    def start_recording():
+        recording["active"] = True
+        recording["frames"] = []
+        set_tray(True, "Recording...")
+        log.info("● Recording...")
+
+    def stop_and_transcribe():
+        recording["active"] = False
+        set_tray(False, "Transcribing...")
+        log.info("Transcribing...")
+
+        with recording["lock"]:
+            if not recording["frames"]:
+                set_tray(False, "Ready")
+                return
+            audio = np.concatenate(recording["frames"], axis=0)
             recording["frames"] = []
-            print("[VoiceButton] ● Recording...", end="", flush=True)
 
-    def on_release(event):
-        if recording["active"]:
-            recording["active"] = False
-            print(" done.")
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        audio = audio.astype(np.float32).flatten()
 
-            with recording["lock"]:
-                if not recording["frames"]:
-                    return
-                # Concatenate all frames into single array
-                audio = np.concatenate(recording["frames"], axis=0)
-                recording["frames"] = []
+        duration = len(audio) / SAMPLE_RATE
+        peak = np.abs(audio).max()
+        rms = np.sqrt(np.mean(audio ** 2))
+        log.info(f"dur={duration:.1f}s peak={peak:.4f} rms={rms:.4f}")
+        if duration < 0.3:
+            log.info("Too short, ignoring.")
+            set_tray(False, "Ready")
+            return
+        if peak < 0.01:
+            log.warning("Audio is SILENT — wrong mic or muted?")
+            set_tray(False, "Ready")
+            return
 
-            # Convert to float32 mono if needed
-            if audio.ndim > 1:
-                audio = audio.mean(axis=1)
-            audio = audio.astype(np.float32).flatten()
+        segments, info = model.transcribe(
+            audio,
+            language=LANGUAGE,
+            beam_size=BEAM_SIZE,
+            vad_filter=True,
+            initial_prompt=INITIAL_PROMPT,
+            vad_parameters=dict(
+                min_silence_duration_ms=300,
+                speech_pad_ms=200,
+            ),
+        )
 
-            duration = len(audio) / SAMPLE_RATE
-            peak = np.abs(audio).max()
-            rms = np.sqrt(np.mean(audio ** 2))
-            print(f" dur={duration:.1f}s peak={peak:.4f} rms={rms:.4f}")
-            if duration < 0.3:
-                print("[VoiceButton] Too short, ignoring.")
-                return
-            if peak < 0.01:
-                print("[VoiceButton] Audio is SILENT — wrong mic or muted?")
-                return
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        log.info(f">> {text}")
 
-            print(f"[VoiceButton] Transcribing {duration:.1f}s...", end="", flush=True)
-            t0 = time.time()
+        if text:
+            paste_text(text)
+        else:
+            log.info("(no speech detected)")
+        set_tray(False, "Ready")
 
-            segments, info = model.transcribe(
-                audio,
-                language=LANGUAGE,
-                beam_size=BEAM_SIZE,
-                vad_filter=True,
-                vad_parameters=dict(
-                    min_silence_duration_ms=300,
-                    speech_pad_ms=200,
-                ),
-            )
-
-            # Collect text
-            text = " ".join(seg.text.strip() for seg in segments).strip()
-            elapsed = time.time() - t0
-            print(f" ({elapsed:.1f}s)")
-
-            if text:
-                print(f"[VoiceButton] >> {text}")
-                type_text(text)
-            else:
-                print("[VoiceButton] (no speech detected)")
-
-    def type_text(text):
-        """Paste text into the currently active window at cursor position.
-
-        Uses clipboard + Ctrl+V via keyboard library (not pyautogui, which
-        can silently fail). Saves and restores user's clipboard.
-        """
+    def paste_text(text):
+        """Paste text at cursor position. Saves/restores clipboard."""
         import pyperclip
 
-        # Save current clipboard so we don't clobber user's data
         try:
             saved = pyperclip.paste()
         except Exception:
             saved = None
 
-        # Put our text into clipboard
         pyperclip.copy(text)
-        print("[VoiceButton] Clipboard set, sending Ctrl+V...")
-
-        # Small delay to ensure clipboard is ready
         time.sleep(0.05)
 
-        # Send Ctrl+V via keyboard library — more reliable than pyautogui
-        # on Windows, especially with elevated privileges
         try:
             keyboard.press("ctrl")
             keyboard.press("v")
             keyboard.release("v")
             keyboard.release("ctrl")
-            print("[VoiceButton] Ctrl+V sent.")
+            log.info("Ctrl+V sent.")
         except Exception as e:
-            print(f"[VoiceButton] ERROR sending Ctrl+V: {e}")
-            # Fallback: try pyautogui
+            log.error(f"keyboard Ctrl+V failed: {e}")
             try:
                 import pyautogui
                 pyautogui.hotkey("ctrl", "v")
-                print("[VoiceButton] pyautogui fallback sent.")
             except Exception as e2:
-                print(f"[VoiceButton] pyautogui fallback also failed: {e2}")
+                log.error(f"pyautogui fallback failed: {e2}")
 
-        # Restore clipboard after paste has been processed
         def _restore():
             time.sleep(0.3)
             try:
@@ -173,25 +209,49 @@ def main():
 
         threading.Thread(target=_restore, daemon=True).start()
 
-    # Resolve mic device
-    mic_dev = MIC_DEVICE
-    if mic_dev is not None and isinstance(mic_dev, str):
-        # Find by substring match
-        for i, d in enumerate(sd.query_devices()):
-            if d['max_input_channels'] > 0 and mic_dev.lower() in d['name'].lower():
-                mic_dev = i
-                print(f"[VoiceButton] Mic matched: #{i} {sd.query_devices(i)['name']}")
-                break
-        else:
-            print(f"[VoiceButton] WARNING: Mic '{MIC_DEVICE}' not found, using default")
+    # ── Hotkey handlers ─────────────────────────────────────
+    def on_press(event):
+        # Continuous mode → stop and transcribe
+        if state["mode"] == "continuous":
+            stop_and_transcribe()
+            state["mode"] = "idle"
+            return
 
-    # Start mic stream (always listening, audio_callback only saves when recording)
+        # If a release-timer is pending → this is a double-click → go continuous
+        if state["release_timer"]:
+            state["release_timer"].cancel()
+            state["release_timer"] = None
+            state["mode"] = "continuous"
+            log.info("Continuous mode activated.")
+            return
+
+        # Normal push-to-talk start
+        if state["mode"] == "idle":
+            start_recording()
+            state["mode"] = "ptt"
+
+    def on_release(event):
+        if state["mode"] != "ptt":
+            return  # continuous mode ignores release
+
+        # Delay transcription — if another press comes within threshold,
+        # on_press will cancel this timer and switch to continuous.
+        def delayed():
+            state["mode"] = "idle"
+            state["release_timer"] = None
+            stop_and_transcribe()
+
+        t = threading.Timer(DOUBLE_PRESS_THRESHOLD, delayed)
+        state["release_timer"] = t
+        t.start()
+
+    # ── Start audio stream ──────────────────────────────────
     stream = sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
         callback=audio_callback,
-        blocksize=int(SAMPLE_RATE * 0.1),  # 100ms chunks
+        blocksize=int(SAMPLE_RATE * 0.1),
         device=mic_dev,
     )
     stream.start()
@@ -200,15 +260,33 @@ def main():
     keyboard.on_press_key(HOTKEY, on_press, suppress=False)
     keyboard.on_release_key(HOTKEY, on_release, suppress=False)
 
-    print(f"[VoiceButton] Ready. Hold [{HOTKEY}] to record, release to transcribe.")
-    print(f"[VoiceButton] Press Ctrl+C in this window to exit.")
+    log.info(f"Ready. Hold {HOTKEY.upper()} to record, double-click for continuous.")
 
-    # Keep alive
-    try:
-        while True:
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        print("\n[VoiceButton] Exiting.")
+    # ── Tray menu ───────────────────────────────────────────
+    def on_exit(icon, item):
+        log.info("Exiting...")
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+        keyboard.unhook_all()
+        icon.stop()
+
+    icon = pystray.Icon(
+        "VoiceButton",
+        mic_icon(False),
+        "VoiceButton — Ready",
+        menu=pystray.Menu(
+            pystray.MenuItem("VoiceButton", None, enabled=False),
+            pystray.MenuItem("F9 hold = talk, 2x = continuous", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Exit", on_exit),
+        ),
+    )
+    icon_ref["icon"] = icon
+
+    icon.run()  # blocks — main loop
 
 
 if __name__ == "__main__":
