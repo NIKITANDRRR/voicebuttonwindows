@@ -126,12 +126,9 @@ def main():
     def type_text(text):
         """Paste text into the currently active window at cursor position.
 
-        Strategy: save clipboard, copy our text, Ctrl+V, restore clipboard.
-        A small delay before paste lets the released Shift modifier flush
-        so we don't accidentally trigger Ctrl+Shift+V (which is "paste as
-        plain text" in some apps / different action in terminals).
+        Uses clipboard + Ctrl+V via keyboard library (not pyautogui, which
+        can silently fail). Saves and restores user's clipboard.
         """
-        import pyautogui
         import pyperclip
 
         # Save current clipboard so we don't clobber user's data
@@ -140,22 +137,37 @@ def main():
         except Exception:
             saved = None
 
-        # Brief pause to ensure Shift modifier is fully released before we
-        # simulate Ctrl+V — otherwise we'd send Ctrl+Shift+V.
-        time.sleep(0.08)
-
+        # Put our text into clipboard
         pyperclip.copy(text)
-        pyautogui.hotkey("ctrl", "v")
+        print("[VoiceButton] Clipboard set, sending Ctrl+V...")
 
-        # Restore clipboard shortly after — paste needs the new content to
-        # actually be in the clipboard when Ctrl+V is processed.
+        # Small delay to ensure clipboard is ready
+        time.sleep(0.05)
+
+        # Send Ctrl+V via keyboard library — more reliable than pyautogui
+        # on Windows, especially with elevated privileges
+        try:
+            keyboard.press("ctrl")
+            keyboard.press("v")
+            keyboard.release("v")
+            keyboard.release("ctrl")
+            print("[VoiceButton] Ctrl+V sent.")
+        except Exception as e:
+            print(f"[VoiceButton] ERROR sending Ctrl+V: {e}")
+            # Fallback: try pyautogui
+            try:
+                import pyautogui
+                pyautogui.hotkey("ctrl", "v")
+                print("[VoiceButton] pyautogui fallback sent.")
+            except Exception as e2:
+                print(f"[VoiceButton] pyautogui fallback also failed: {e2}")
+
+        # Restore clipboard after paste has been processed
         def _restore():
-            time.sleep(0.25)
+            time.sleep(0.3)
             try:
                 if saved is not None:
                     pyperclip.copy(saved)
-                else:
-                    pyperclip.copy("")
             except Exception:
                 pass
 
