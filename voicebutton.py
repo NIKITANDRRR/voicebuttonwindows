@@ -12,9 +12,11 @@ Runs as system tray icon (no console window).
 import sys
 import os
 import time
+import subprocess
 import threading
 import logging
 import tempfile
+from pathlib import Path
 import numpy as np
 
 # ── Config ──────────────────────────────────────────────
@@ -35,6 +37,30 @@ INITIAL_PROMPT = "Привет, как дела? Это пример текст�
 LOG_FILE = os.path.join(tempfile.gettempdir(), "voicebutton.log")
 LOG_MAX_BYTES = 1_048_576  # 1 MB per file
 LOG_BACKUP_COUNT = 3       # keep last 3 rotated files (4 MB total max)
+
+# Model info — used for VRAM checks and first-run download messages.
+# VRAM includes model weights + inference overhead (beam search, KV cache).
+VRAM_MIN_GB = {
+    "tiny": 1,
+    "base": 1,
+    "small": 2,
+    "medium": 5,
+    "large-v2": 10,
+    "large-v3": 10,
+}
+# Approximate download size (ctranslate2 float16 format).
+MODEL_DOWNLOAD_GB = {
+    "tiny": 0.07,
+    "base": 0.14,
+    "small": 0.30,
+    "medium": 1.5,
+    "large-v2": 3.0,
+    "large-v3": 3.0,
+}
+# Where to store downloaded models. None = HuggingFace default:
+#   Windows: C:\Users\<user>\.cache\huggingface\hub\
+#   Linux:   ~/.cache/huggingface/hub/
+MODEL_CACHE_DIR = None
 # ────────────────────────────────────────────────────────
 
 # Logging (file-based since no console in tray mode).
@@ -53,13 +79,167 @@ if LOG_FILE:
     log.addHandler(fh)
 
 
+# ── Helper functions ─────────────────────────────────────
+
+def get_vram_mb():
+    """Get GPU VRAM in MB via nvidia-smi. Returns None if unavailable."""
+    try:
+        kwargs = {"capture_output": True, "text": True, "timeout": 5}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            **kwargs,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return int(result.stdout.strip().split("\n")[0])
+    except Exception:
+        pass
+    return None
+
+
+def is_model_cached(model_size):
+    """Check if the Whisper model is already downloaded."""
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    if not cache_dir.exists():
+        return False
+    pattern = f"faster-whisper-{model_size}"
+    for d in cache_dir.iterdir():
+        if pattern in d.name.lower():
+            # Verify actual model files exist (not just a partial download)
+            if list(d.rglob("model.bin")) or list(d.rglob("*.safetensors")):
+                return True
+    return False
+
+
+def show_error_dialog(title, message):
+    """Show a tkinter error dialog."""
+    import tkinter as tk
+    from tkinter import messagebox
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror(title, message)
+    root.destroy()
+
+
+def show_loading_window(model_size, downloading):
+    """Show a centered loading window with indeterminate progress bar.
+
+    Returns the tk.Tk root. Caller destroys it when done.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    root = tk.Tk()
+    root.title("VoiceButton")
+    root.geometry("420x170")
+    root.resizable(False, False)
+
+    # Center on screen
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() - 420) // 2
+    y = (root.winfo_screenheight() - 170) // 2
+    root.geometry(f"+{x}+{y}")
+
+    if downloading:
+        dl_gb = MODEL_DOWNLOAD_GB.get(model_size, "?")
+        line1 = f"Downloading Whisper {model_size} model (~{dl_gb} GB)"
+        line2 = "First run only — please wait."
+    else:
+        line1 = f"Loading Whisper {model_size} model..."
+        line2 = ""
+
+    lbl1 = tk.Label(root, text=line1, font=("Segoe UI", 12, "bold"))
+    lbl1.pack(pady=(30, 5))
+    if line2:
+        lbl2 = tk.Label(root, text=line2, font=("Segoe UI", 10), fg="gray")
+        lbl2.pack(pady=(0, 15))
+    else:
+        lbl2 = tk.Label(root, text="", font=("Segoe UI", 10))
+        lbl2.pack(pady=(0, 15))
+
+    progress = ttk.Progressbar(root, mode="indeterminate", length=360)
+    progress.pack(pady=(0, 20))
+    progress.start(12)
+
+    root.update()
+    return root
+
+
+def load_model_with_ui(model_size, device, compute_type, download_root):
+    """Load Whisper model with VRAM check + loading window.
+
+    Shows an error dialog and calls sys.exit(1) on failure.
+    """
+    # ── Step 1: VRAM check ──
+    if device == "cuda":
+        vram = get_vram_mb()
+        required_gb = VRAM_MIN_GB.get(model_size, 0)
+        if vram is not None and vram < required_gb * 1024:
+            vram_gb = vram / 1024
+            show_error_dialog(
+                "VoiceButton — Not Enough VRAM",
+                f"Whisper {model_size} requires ~{required_gb} GB VRAM.\n"
+                f"Your GPU has {vram_gb:.0f} GB.\n\n"
+                f"Please use voicebutton-medium.exe instead.\n"
+                f"(or set DEVICE=\"cpu\" in voicebutton.py)",
+            )
+            log.error(f"VRAM check failed: {vram_gb:.1f} GB < {required_gb} GB required")
+            sys.exit(1)
+        elif vram is not None:
+            log.info(f"VRAM check OK: {vram / 1024:.1f} GB available, {required_gb} GB required")
+        else:
+            log.warning("Could not query VRAM — proceeding without check")
+
+    # ── Step 2: Check if model needs downloading ──
+    downloading = not is_model_cached(model_size)
+
+    # ── Step 3: Show loading window ──
+    if downloading:
+        log.info(f"First run — downloading model '{model_size}' (~{MODEL_DOWNLOAD_GB.get(model_size, '?')} GB)...")
+    else:
+        log.info(f"Loading cached model '{model_size}'...")
+
+    win = show_loading_window(model_size, downloading)
+
+    # ── Step 4: Load in background thread ──
+    result = {"model": None, "error": None}
+
+    def _load():
+        try:
+            kwargs = dict(device=device, compute_type=compute_type)
+            if download_root:
+                kwargs["download_root"] = download_root
+            result["model"] = __import__("faster_whisper").WhisperModel(model_size, **kwargs)
+        except Exception as e:
+            result["error"] = e
+            log.error(f"Model load error: {e}")
+        finally:
+            win.after(0, win.destroy)
+
+    threading.Thread(target=_load, daemon=True).start()
+    win.mainloop()  # blocks until window is destroyed
+
+    # ── Step 5: Check result ──
+    if result["error"]:
+        err_str = str(result["error"])
+        show_error_dialog(
+            "VoiceButton — Error",
+            f"Failed to load Whisper {model_size}:\n{err_str}\n\n"
+            f"If this is a memory error, try voicebutton-medium.exe.",
+        )
+        sys.exit(1)
+
+    log.info("Model loaded.")
+    return result["model"]
+
+
 def main():
     import ctypes
     import keyboard
     import sounddevice as sd
     import pystray
     from PIL import Image, ImageDraw
-    from faster_whisper import WhisperModel
 
     # Check admin rights (keyboard hook needs it on Windows)
     if sys.platform == "win32":
@@ -78,10 +258,8 @@ def main():
         if d["max_input_channels"] > 0:
             log.info(f"  #{i}: {d['name']} (in:{d['max_input_channels']})")
 
-    # Load model
-    log.info(f"Loading model '{MODEL_SIZE}' on {DEVICE}...")
-    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-    log.info("Model loaded.")
+    # Load model (with VRAM check + loading window)
+    model = load_model_with_ui(MODEL_SIZE, DEVICE, COMPUTE_TYPE, MODEL_CACHE_DIR)
 
     # Resolve mic device
     mic_dev = MIC_DEVICE
@@ -272,6 +450,9 @@ def main():
     log.info(f"Ready. Hold {HOTKEY.upper()} to record, double-click for continuous.")
 
     # ── Tray menu ───────────────────────────────────────────
+    # Find model cache path for info display
+    cache_display = MODEL_CACHE_DIR or str(Path.home() / ".cache" / "huggingface" / "hub")
+
     def on_exit(icon, item):
         log.info("Exiting...")
         try:
@@ -289,6 +470,10 @@ def main():
         menu=pystray.Menu(
             pystray.MenuItem("VoiceButton", None, enabled=False),
             pystray.MenuItem("F9 hold = talk, 2x = continuous", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE}", None, enabled=False),
+            pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
+            pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", on_exit),
         ),

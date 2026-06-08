@@ -46,6 +46,9 @@ Output: `dist/voicebutton.exe`
 | LOG_FILE | %TEMP%\voicebutton.log | log file path |
 | LOG_MAX_BYTES | 1048576 | 1 MB — log rotation threshold |
 | LOG_BACKUP_COUNT | 3 | number of rotated backup files |
+| VRAM_MIN_GB | {medium:5, large-v3:10, ...} | minimum VRAM per model (pre-load check via nvidia-smi) |
+| MODEL_DOWNLOAD_GB | {medium:1.5, large-v3:3.0, ...} | approximate download size for first-run UI |
+| MODEL_CACHE_DIR | None | None = HuggingFace default (~/.cache/huggingface/hub) |
 
 ## Releases
 

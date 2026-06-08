@@ -116,6 +116,19 @@ F9 released → faster-whisper transcribes (VAD + Russian punctuation hint)
             → original clipboard restored after 300ms
 ```
 
+## Where are models stored?
+
+On first launch, VoiceButton downloads the Whisper model (~1.5 GB for medium, ~3 GB for large). Models are cached for subsequent runs.
+
+**Default cache location (Windows):**
+```
+C:\Users\<your-user>\.cache\huggingface\hub\
+```
+
+You can change this by setting `MODEL_CACHE_DIR` at the top of `voicebutton.py`.
+
+To free disk space, simply delete the `faster-whisper-*` folder — the model will re-download on next run.
+
 ## Logs
 
 When running as tray app, logs are written to:
