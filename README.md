@@ -18,9 +18,10 @@ Powered by faster-whisper (CUDA), runs as a system tray app.
 
 ---
 
-> **🆕 Не умеешь настраивать компьютер?** Есть подробная пошаговая инструкция для новичков: как проверить видеокарту, поставить драйвер NVIDIA, выбрать нужную версию и запустить программу за 10 минут — **[📘 Открой пошаговую настройку →](SETUP_GUIDE.md)**
+> **📘 New here and not a computer wizard?** Read the step-by-step setup guide — how to check your GPU, install the NVIDIA driver, pick the right build, and start dictating in 10 minutes:
 >
-> **🆕 New user?** Step-by-step setup guide (in Russian): **[📘 Setup Guide →](SETUP_GUIDE.md)**
+> - 🇬🇧 English: **[Setup Guide →](SETUP_GUIDE_EN.md)**
+> - 🇷🇺 Русский: **[Пошаговая настройка →](SETUP_GUIDE.md)**
 
 ## What it does
 
