@@ -18,6 +18,10 @@ Powered by faster-whisper (CUDA), runs as a system tray app.
 
 ---
 
+> **🆕 Не умеешь настраивать компьютер?** Есть подробная пошаговая инструкция для новичков: как проверить видеокарту, поставить драйвер NVIDIA, выбрать нужную версию и запустить программу за 10 минут — **[📘 Открой пошаговую настройку →](SETUP_GUIDE.md)**
+>
+> **🆕 New user?** Step-by-step setup guide (in Russian): **[📘 Setup Guide →](SETUP_GUIDE.md)**
+
 ## What it does
 
 VoiceButton sits in your system tray and lets you dictate text into **any** application — Telegram, browser, editor, email, anywhere your cursor is.
