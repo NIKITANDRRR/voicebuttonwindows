@@ -1,130 +1,125 @@
-# 📘 VoiceButton — Step-by-Step Setup Guide for Beginners
+# VoiceButton — step-by-step setup
 
-> If you're not a programmer or sysadmin and just want the app to type what you say — this guide is for you. Everything is explained step by step. You don't need to memorize anything — just follow along in order.
-
----
-
-## What this program does
-
-**VoiceButton** types what you say. Hold the **F9** key, speak into your microphone, release **F9** — and the text appears wherever your cursor is (Telegram, Word, browser, email — anywhere).
-
-It works fast if you have an **NVIDIA** graphics card. Without one it still works, just slower (see below).
+> This guide covers a clean setup: checking your GPU, installing the NVIDIA driver, picking the right build, and the first run. Work through the steps in order.
+>
+> Русская версия: [SETUP_GUIDE.md](SETUP_GUIDE.md)
 
 ---
 
-## What you need (short version)
+## What the program does
 
-| What | Why |
+VoiceButton types what you say. Hold **F9**, speak, release **F9** — the text appears wherever the cursor is: Telegram, Word, a browser, an email.
+
+With an NVIDIA graphics card recognition is fast. Without one the app still runs, just slower.
+
+---
+
+## What you need
+
+| Item | Why |
 |---|---|
-| Windows 10 or 11 | the system itself |
-| An NVIDIA graphics card | so speech recognition runs fast |
-| NVIDIA driver (a.k.a. the "CUDA driver") | so the app can talk to the GPU |
-| A microphone | obvious :) |
+| Windows 10 or 11 | the OS the app runs on |
+| NVIDIA graphics card | speeds up recognition |
+| NVIDIA driver | without it the app can't see the GPU |
+| Microphone | you speak into it |
 
-**Important:** you do **NOT** need to install the full "CUDA Toolkit" (a huge multi-gigabyte developer package). For the ready-made app, the regular **NVIDIA driver** is enough — that's what people often call the "CUDA driver" in casual talk.
+You do **not** need the full CUDA Toolkit (the multi-gigabyte developer package). The regular NVIDIA driver is enough — that's what people usually mean when they say "CUDA driver".
 
 ---
 
-## Step 1. Check whether you have an NVIDIA graphics card
+## Step 1. Check for an NVIDIA graphics card
 
 1. Press **Win + X** (or right-click the Start button).
-2. Select **Device Manager**.
+2. Open **Device Manager**.
 3. Expand the **Display adapters** section.
-4. Look at what's listed:
-   - You see **"NVIDIA GeForce …"** — great, you have the card. Go to Step 2.
-   - You only see **"Intel …"** or **"AMD …"** — there's no NVIDIA card. The app will still work (on the CPU), just slower. You can jump straight to Step 4.
+4. Two possibilities:
+   - **"NVIDIA GeForce …"** is listed — you have the card, go to step 2.
+   - Only **"Intel …"** or **"AMD …"** — no NVIDIA card. The app will run on the CPU; skip to step 4.
 
 ---
 
-## Step 2. Install (or update) the NVIDIA driver
+## Step 2. Install the NVIDIA driver
 
-The driver is the software that teaches Windows how to use your graphics card. You install it once.
+The driver is the software that lets Windows talk to your graphics card. You install it once.
 
-### Option A (easier, automatic) — via the NVIDIA App / GeForce Experience
+### Option A — via the NVIDIA App (automatic)
 
-1. Go to `https://www.nvidia.com/geforce-experience/` (or the NVIDIA App page) and download **GeForce Experience** / **NVIDIA App**.
-2. Install it (just keep clicking Next).
-3. Open it → **Drivers** tab → **Check for updates** → **Install**.
-4. Wait for it to finish and restart your computer.
+1. Download the NVIDIA App (or GeForce Experience) from `https://www.nvidia.com/`.
+2. Install and open it.
+3. Go to the **Drivers** tab → **Check for updates** → **Install**.
+4. Restart the computer after it finishes.
 
-### Option B (manually, no extra software)
+### Option B — manually from the NVIDIA site
 
-1. Open `https://www.nvidia.com/download/index.aspx`.
-2. Select your graphics card (series and model — e.g. GeForce RTX 3060), your OS (Windows 10/11, 64-bit), and language.
-3. Click **Search** → download the driver → run the downloaded file → click Next until it's done.
-4. Restart your computer.
+1. Open the driver search page: `https://www.nvidia.com/download/index.aspx`.
+2. Pick your card series and model (e.g. GeForce RTX 3060), your OS (Windows 10/11, 64-bit), and language.
+3. Click **Search**, download the file it offers, and run it.
+4. Restart the computer.
 
 ---
 
-## Step 3. Verify the driver installed correctly
+## Step 3. Verify the driver
 
 1. Press **Win + R**, type `cmd`, press Enter.
 2. In the black window type `nvidia-smi` and press Enter.
-3. If you see a table with your GPU name and driver version — everything is fine.
-4. If it says `'nvidia-smi' is not recognized as an internal or external command` — the driver didn't install; go back to Step 2.
+3. A table with your GPU name and driver version means everything is installed.
+4. `'nvidia-smi' is not recognized…` means the driver isn't there — back to step 2.
 
 ---
 
-## Step 4. Download the app and pick the right version
+## Step 4. Download the app and pick a build
 
-The [Releases](https://github.com/NIKITANDRRR/voicebuttonwindows/releases) page has two ready-made files. Which one to pick depends on your GPU's **VRAM** (video memory):
+The [Releases](https://github.com/NIKITANDRRR/voicebuttonwindows/releases) page has two ready-made files. Choose by the amount of VRAM (video memory):
 
-| File | VRAM required | Typical GPUs |
+| File | VRAM needed | Typical GPUs |
 |---|---|---|
-| `voicebutton-medium.exe` | ~6 GB+ | RTX 2060, 3060, 4060 and similar |
-| `voicebutton-large.exe` | ~10 GB+ | RTX 3080, 4070, 4080 and similar |
+| `voicebutton-medium.exe` | 6 GB+ | RTX 2060, 3060, 4060 |
+| `voicebutton-large.exe` | 10 GB+ | RTX 3080, 4070, 4080 |
 
-**How to check your VRAM:**
+How to check your VRAM:
 
-1. Press **Ctrl + Shift + Esc** (Task Manager opens).
-2. Go to the **Performance** tab → click **GPU** on the left.
-3. Look at the **Dedicated GPU memory** line — that's your VRAM in GB.
+1. **Ctrl + Shift + Esc** opens Task Manager.
+2. **Performance** tab → **GPU** on the left.
+3. The **Dedicated GPU memory** line is your VRAM.
 
-Not sure? Take `voicebutton-medium.exe`. It works on most modern GPUs, and its accuracy for Russian and English is already very good.
-
-Download the file anywhere you like (e.g. your Desktop).
+If in doubt, take `voicebutton-medium.exe`: it fits most modern cards, and its Russian and English accuracy is already high.
 
 ---
 
 ## Step 5. Run the app
 
-> ⚠️ **Important:** the app must be run **as Administrator** — otherwise it can't capture the F9 key and simply won't work.
+> ⚠️ The app must run as Administrator — otherwise it can't track the F9 key and won't work.
 
 1. Find the downloaded `.exe` file.
-2. **Right-click** it → **Run as administrator**.
-3. If Windows SmartScreen asks "Run?" — click **"More info"** → **"Run anyway"** (normal for apps not from the store).
-4. If your antivirus complains — allow the file (it's a common false positive; the app's source code is open and lives in this repository).
+2. Right-click → **Run as administrator**.
+3. If Windows SmartScreen asks whether to run: **More info** → **Run anyway**. That's a standard warning for apps outside the store.
+4. If your antivirus blocks the file, allow it — the app's source code is open and lives in this repository.
 
-To avoid right-clicking every time, set it up once: right-click the file → **Properties** → **Compatibility** tab → check **"Run this program as an administrator"** → **OK**.
-
----
-
-## Step 6. First launch (the model downloads)
-
-On first launch the app downloads the speech recognition "model":
-
-- medium — about **1.5 GB**;
-- large — about **3 GB**.
-
-This happens only once. A small "Downloading Whisper … model" window appears — just wait. The model is saved to `C:\Users\<your-name>\.cache\huggingface\hub\`, and next time the app starts instantly.
-
-After loading, a microphone icon appears in the bottom-right corner (system tray, next to the clock): green — ready, red — recording.
-
-> The app doesn't open a window — it lives in the tray. To close it, right-click the mic icon → **Exit**.
+To always run elevated: right-click the file → **Properties** → **Compatibility** tab → check **"Run this program as an administrator"** → **OK**.
 
 ---
 
-## Step 7. Check that everything works
+## Step 6. First launch
 
-1. Open any text editor (Notepad, Word) or a chat.
-2. Place the cursor where you want the text.
-3. **Hold F9** and speak into the microphone.
-4. **Release F9** — a second later the text appears at the cursor.
+The first launch downloads the recognition model: about **1.5 GB** for medium and **3 GB** for large. This happens once; after that the model is stored locally in `C:\Users\<name>\.cache\huggingface\hub\`.
 
-**Extras:**
+A "Downloading Whisper … model" window shows the progress — wait for it to finish. Then a microphone icon appears in the tray (next to the clock): green means ready, red means recording.
 
-- **Two quick F9 presses** (press-release-press) start continuous mode — the app writes everything until you press F9 again.
-- Your clipboard is safe — the app saves and restores whatever was in it before pasting.
+The app has no window; it works from the tray. To quit, right-click the mic icon → **Exit**.
+
+---
+
+## Step 7. Check that it works
+
+1. Open any editor (Notepad, Word) or a chat.
+2. Put the cursor where you want the text.
+3. Hold **F9** and speak.
+4. Release **F9** — a second later the text lands at the cursor.
+
+Two more things:
+
+- Two quick F9 presses start continuous recording; the next F9 press stops it.
+- Your clipboard is safe: the app saves it before pasting and restores it afterwards.
 
 ---
 
@@ -132,34 +127,25 @@ After loading, a microphone icon appears in the bottom-right corner (system tray
 
 ### The tray says "CPU mode (no GPU)"
 
-The app didn't detect an NVIDIA card and switched to the CPU. Not an error — just slower.
+The app didn't find an NVIDIA card and is running on the CPU. Not an error, just slower. If you do have a card, check steps 2–3: the driver is probably missing or outdated.
 
-- If you DO have an NVIDIA card — re-check Steps 2–3 (driver missing or outdated).
-- If you don't have one — that's expected; everything runs on the CPU.
+### No text appears, log says "Audio is SILENT"
 
-### No text appears / log says "Audio is SILENT"
-
-The app is recording from the wrong microphone.
-
-- Check the mic is connected and enabled: **Settings → System → Sound → Input**, pick the right microphone and make sure its volume isn't zero.
-- Check mic access: **Settings → Privacy & security → Microphone** → allow access.
+Recording goes to the wrong microphone. Check that the mic is connected and selected: **Settings → System → Sound → Input**. And that mic access is allowed: **Settings → Privacy & security → Microphone**.
 
 ### Windows or antivirus blocks the file
 
-See Step 5 — use "More info → Run anyway" and add the file to your antivirus exclusions.
+See step 5.
 
-### Where are the logs (to show someone an error)
+### Where are the logs
 
-The app writes a log to `%TEMP%\voicebutton.log`. Paste that path into File Explorer to open the file.
+The log lives at `%TEMP%\voicebutton.log` — paste that path into File Explorer to open the file.
 
 ---
 
-## For advanced users: running from source
+## Running from source
 
-If you want to run from source code (instead of the ready EXE), you'll need a bit more:
-
-1. Install Python 3.12.
-2. Install the NVIDIA driver (Step 2 above) **plus** the CUDA 12 and cuDNN 9 libraries — needed for GPU mode from source. Official instructions: [faster-whisper → GPU](https://github.com/SYSTRAN/faster-whisper#gpu).
+You'll need Python 3.12, the NVIDIA driver, and the CUDA 12 + cuDNN 9 libraries for GPU mode. Installation is covered in the [faster-whisper GPU section](https://github.com/SYSTRAN/faster-whisper#gpu).
 
 ```bash
 git clone https://github.com/NIKITANDRRR/voicebuttonwindows.git

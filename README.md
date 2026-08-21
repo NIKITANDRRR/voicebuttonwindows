@@ -18,10 +18,10 @@ Powered by faster-whisper (CUDA), runs as a system tray app.
 
 ---
 
-> **📘 New here and not a computer wizard?** Read the step-by-step setup guide — how to check your GPU, install the NVIDIA driver, pick the right build, and start dictating in 10 minutes:
+> **Нужна помощь с настройкой компьютера?** Есть подробная пошаговая инструкция:
 >
-> - 🇬🇧 English: **[Setup Guide →](SETUP_GUIDE_EN.md)**
-> - 🇷🇺 Русский: **[Пошаговая настройка →](SETUP_GUIDE.md)**
+> - 🇷🇺 Русский: [Пошаговая настройка](SETUP_GUIDE.md)
+> - 🇬🇧 English: [Setup guide](SETUP_GUIDE_EN.md)
 
 ## What it does
 
@@ -133,6 +133,13 @@ C:\Users\<your-user>\.cache\huggingface\hub\
 You can change this by setting `MODEL_CACHE_DIR` at the top of `voicebutton.py`.
 
 To free disk space, simply delete the `faster-whisper-*` folder — the model will re-download on next run.
+
+## Setup guide
+
+For the full walkthrough — GPU check, NVIDIA driver, picking a build, first launch — see:
+
+- 🇷🇺 [Пошаговая настройка](SETUP_GUIDE.md) (Russian)
+- 🇬🇧 [Setup guide](SETUP_GUIDE_EN.md) (English)
 
 ## Logs
 

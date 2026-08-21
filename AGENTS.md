@@ -8,6 +8,9 @@ Single-file app: `voicebutton.py`
 
 Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (with Russian punctuation prompt) → save clipboard → pyperclip+Ctrl+V via keyboard lib → restore clipboard
 
+## Docs
+- `SETUP_GUIDE.md` (RU) / `SETUP_GUIDE_EN.md` (EN) — step-by-step computer setup for users: GPU check, NVIDIA driver install, choosing medium vs large build, first run, troubleshooting. Linked from the README header. Keep wording neutral (no "beginners/newbies" framing), formal "вы"/"you" address.
+
 ## Key Decisions
 - **Hotkey: F9** — Right Shift caused Windows Sticky Keys popup; Right Alt = AltGr on RU (not detectable); Scroll Lock = OS-handled; F9 is unused and clean
 - **Double-click F9 = continuous mode** — quick press-release-press within 350ms toggles continuous recording until next F9 press. Implemented via release-timer that gets cancelled on second press
@@ -16,7 +19,7 @@ Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (wi
 - **Cursor-position paste via Ctrl+V** — uses keyboard library (not pyautogui) for key simulation. Clipboard saved before paste, restored 300ms after
 - **Mic: Jabra Speak 710** — Realtek default records silence. MIC_DEVICE config supports substring match
 - **Admin required** — `keyboard` hook needs elevated privileges on Windows
-- **Auto CPU fallback** — если нет NVIDIA драйвера/CUDA, программа сама переключается на CPU (int8). Пользователь видит в трее "CPU mode (no GPU)"
+- **Auto CPU fallback** — if no NVIDIA driver/CUDA, программа сама переключается на CPU (int8). Пользователь видит в трее "CPU mode (no GPU)"
 - **VAD model** — `silero_vad_v6.onnx` must be included in PyInstaller datas (spec file)
 
 ## Build
@@ -30,6 +33,7 @@ Output: `dist/voicebutton.exe`
 - If "Audio is SILENT" — wrong mic device, change MIC_DEVICE in config
 - `vad_filter=True` requires silero_vad onnx in assets — bundled via spec `datas`
 - PyInstaller one-file mode: all DLLs packed into single exe, first run slower (extraction)
+- CUDA Toolkit is NOT required for the ready EXE — the NVIDIA driver alone is enough; cuDNN/cuBLAS ship inside PyInstaller bundle (from source they must be installed separately, see faster-whisper GPU docs)
 
 ## Config (top of voicebutton.py)
 | Setting | Default | Notes |
@@ -41,7 +45,7 @@ Output: `dist/voicebutton.exe`
 | MIC_DEVICE | "Jabra" | substring match on device name, None=default |
 | LANGUAGE | None | None=auto, "ru"=force Russian |
 | BEAM_SIZE | 5 | beam search width |
-| HOTKEY | f9 | push-to-talk trigger |
+| HOTKEY | f9 | push-to-talk trigger key |
 | DOUBLE_PRESS_THRESHOLD | 0.35 | seconds — max gap for double-click continuous mode |
 | INITIAL_PROMPT | "Привет, как..." | Russian text hint for punctuation |
 | LOG_FILE | %TEMP%\voicebutton.log | log file path |
