@@ -89,7 +89,7 @@ and uncomment what you need — the ini wins over code defaults.
 |---------|---------|-------------|
 | `MODEL_SIZE` | `"medium"` | Whisper model: tiny/base/small/medium/large-v2/large-v3 |
 | `DEVICE` | `"auto"` | `auto` (detect GPU), `"cuda"` or `"cpu"` |
-| `COMPUTE_TYPE` | `"auto"` | `auto` = float16 on GPU / int8 on CPU |
+| `COMPUTE_TYPE` | `"auto"` | `auto` = int8_float16 on GPU (3.4x faster) / int8 on CPU |
 | `MIC_DEVICE` | `"Jabra"` | Mic name substring or `None` for default |
 | `LANGUAGE` | `"ru"` | `"ru"` = force Russian, `"auto"` = detect |
 | `HOTKEY` | `"f9"` | Push-to-talk key (hold) |

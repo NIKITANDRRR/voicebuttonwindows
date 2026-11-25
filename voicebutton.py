@@ -348,7 +348,9 @@ def main():
         device = DEVICE
         log.info(f"Device from config: {device}")
     if COMPUTE_TYPE == "auto":
-        compute_type = "float16" if device == "cuda" else "int8"
+        # int8_float16: 3.4x faster than float16 on GTX 16xx with equal quality
+        # (bench 25.11: 18s speech -> 1.7s vs 5.5s, texts identical or better)
+        compute_type = "int8_float16" if device == "cuda" else "int8"
     else:
         compute_type = COMPUTE_TYPE
 

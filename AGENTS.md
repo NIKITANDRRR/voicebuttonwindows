@@ -44,7 +44,7 @@ Output: `dist/voicebutton.exe`
 |---------|---------|-------|
 | MODEL_SIZE | medium | tiny/base/small/medium/large-v2/large-v3 |
 | DEVICE | auto | auto=detect GPU, "cuda"/"cpu" to force |
-| COMPUTE_TYPE | auto | auto → float16 on GPU, int8 on CPU |
+| COMPUTE_TYPE | auto | auto → int8_float16 on GPU (3.4x faster, same quality), int8 on CPU |
 | SAMPLE_RATE | 16000 | whisper expects 16kHz |
 | MIC_DEVICE | "Jabra" | substring match on device name, None=default |
 | LANGUAGE | "ru" | "auto" = detect |
