@@ -2,11 +2,13 @@
 VoiceButton — push-to-talk transcription via F9.
 
 Hold F9 to record, release to transcribe and paste at cursor.
-Double-click F9 (quick press-release-press) for continuous mode —
-keeps recording until next F9 press.
+F10 toggles continuous mode — keeps recording until F10 pressed again.
 
 Pastes result into active window at cursor position via Ctrl+V.
 Runs as system tray icon (no console window).
+
+Settings can be overridden per machine via voicebutton.ini next to
+the script (or next to the exe) — see voicebutton.ini.example.
 """
 
 import sys
@@ -21,18 +23,22 @@ import numpy as np
 
 # ── Config ──────────────────────────────────────────────
 MODEL_SIZE = "medium"       # tiny/base/small/medium/large-v2/large-v3
-DEVICE = "cuda"             # "cuda" or "cpu"
-COMPUTE_TYPE = "float16"    # float16 for GPU, int8 for CPU
+DEVICE = "auto"             # "auto" (detect GPU), "cuda" or "cpu"
+COMPUTE_TYPE = "auto"       # "auto" (float16 on GPU, int8 on CPU) or explicit
 SAMPLE_RATE = 16000         # whisper expects 16kHz
 MIC_DEVICE = "Jabra"        # None = default, or substring match on device name
-LANGUAGE = None             # None = auto-detect, "ru" = force Russian
+LANGUAGE = "ru"             # "ru" = force Russian, "auto" = detect
 BEAM_SIZE = 5               # beam search width
-HOTKEY = "f9"               # trigger key
-DOUBLE_PRESS_THRESHOLD = 0.35  # seconds — max gap for double-click detection
+HOTKEY = "f9"               # push-to-talk key (hold to record)
+CONTINUOUS_HOTKEY = "f10"   # continuous mode toggle (press once)
 
 # Initial prompt gives Whisper a hint to add punctuation in Russian.
 # Without it, Whisper often omits commas and periods in dictation.
 INITIAL_PROMPT = "Привет, как дела? Это пример текста с запятыми, точками и вопросительными знаками."
+
+# Domain terms the recognizer tends to mangle (company names, jargon).
+# Appended to the initial prompt — fixes e.g. "Metronics" for "Метраникс".
+VOCABULARY = ["Метраникс", "Метран", "ПГ Метран", "КМ", "ЧЗ", "ТФВС", "САКВ", "САК", "ФИО", "артикул"]
 
 LOG_FILE = os.path.join(tempfile.gettempdir(), "voicebutton.log")
 LOG_MAX_BYTES = 1_048_576  # 1 MB per file
@@ -77,6 +83,64 @@ if LOG_FILE:
     )
     fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
     log.addHandler(fh)
+
+# ── External config file (voicebutton.ini) ───────────────
+# Optional per-machine overrides, so repo code and installed copies
+# never diverge: work laptop can run small/cpu while home PC runs
+# medium/cuda — same code, different ini. See voicebutton.ini.example.
+CONFIG_FILE = Path(
+    sys.executable if getattr(sys, "frozen", False) else __file__
+).with_suffix(".ini")
+
+
+def _load_config_file():
+    global MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, LANGUAGE, MIC_DEVICE
+    global HOTKEY, CONTINUOUS_HOTKEY, INITIAL_PROMPT, VOCABULARY, MODEL_CACHE_DIR
+
+    import configparser
+    parser = configparser.ConfigParser()
+    if not CONFIG_FILE.exists():
+        return
+    if not parser.read(CONFIG_FILE, encoding="utf-8"):
+        log.warning(f"Config file unreadable: {CONFIG_FILE}")
+        return
+    log.info(f"Config loaded: {CONFIG_FILE}")
+
+    MODEL_SIZE = parser.get("model", "size", fallback=MODEL_SIZE)
+    DEVICE = parser.get("model", "device", fallback=DEVICE).lower()
+    COMPUTE_TYPE = parser.get("model", "compute", fallback=COMPUTE_TYPE).lower()
+    BEAM_SIZE = parser.getint("model", "beam", fallback=BEAM_SIZE)
+    _lang = parser.get("model", "language", fallback=LANGUAGE).strip().lower()
+    LANGUAGE = None if _lang in ("", "auto") else _lang
+
+    _mic = parser.get("audio", "mic", fallback="").strip()
+    if _mic:
+        MIC_DEVICE = _mic
+
+    HOTKEY = parser.get("hotkeys", "ptt", fallback=HOTKEY).strip().lower()
+    CONTINUOUS_HOTKEY = parser.get("hotkeys", "continuous", fallback=CONTINUOUS_HOTKEY).strip().lower()
+
+    _prompt = parser.get("prompt", "initial_prompt", fallback="").strip()
+    if _prompt:
+        INITIAL_PROMPT = _prompt
+    _terms = parser.get("prompt", "terms", fallback="").strip()
+    if _terms:
+        VOCABULARY = [t.strip() for t in _terms.split(",") if t.strip()]
+
+    _cache = parser.get("model", "cache_dir", fallback="").strip()
+    if _cache:
+        MODEL_CACHE_DIR = _cache
+
+
+_load_config_file()
+
+
+def build_initial_prompt():
+    """Punctuation sample + domain terms, within Whisper's ~224-token prompt budget."""
+    prompt = INITIAL_PROMPT.strip()
+    if VOCABULARY:
+        prompt += " Термины: " + ", ".join(VOCABULARY) + "."
+    return prompt
 
 
 # ── Helper functions ─────────────────────────────────────
@@ -277,13 +341,29 @@ def main():
         if d["max_input_channels"] > 0:
             log.info(f"  #{i}: {d['name']} (in:{d['max_input_channels']})")
 
-    # Auto-detect device (CUDA or CPU fallback)
-    device, compute_type = detect_device()
-    if device != DEVICE or compute_type != COMPUTE_TYPE:
-        log.info(f"Device overridden: config had {DEVICE}/{COMPUTE_TYPE}, using {device}/{compute_type}")
+    # Resolve device/compute: "auto" → detect GPU, explicit config wins
+    if DEVICE == "auto":
+        device = detect_device()[0]
+    else:
+        device = DEVICE
+        log.info(f"Device from config: {device}")
+    if COMPUTE_TYPE == "auto":
+        compute_type = "float16" if device == "cuda" else "int8"
+    else:
+        compute_type = COMPUTE_TYPE
 
     # Load model (with VRAM check + loading window)
     model = load_model_with_ui(MODEL_SIZE, device, compute_type, MODEL_CACHE_DIR)
+
+    # Warm up so the first real dictation is not slow (first transcribe
+    # triggers CUDA kernel init / lazy loading — used to cost ~10s).
+    try:
+        t0 = time.time()
+        model.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32),
+                         language=LANGUAGE, beam_size=1)
+        log.info(f"Model warmed up in {time.time() - t0:.1f}s")
+    except Exception as e:
+        log.warning(f"Warmup failed: {e}")
 
     # Show notification if running on CPU (no NVIDIA driver)
     if device == "cpu":
@@ -305,7 +385,7 @@ def main():
     # ── State ───────────────────────────────────────────────
     recording = {"active": False, "frames": [], "lock": threading.Lock()}
     # mode: "idle" | "ptt" (push-to-talk, waiting for release) | "continuous"
-    state = {"mode": "idle", "release_timer": None}
+    state = {"mode": "idle"}
     icon_ref = {"icon": None}  # filled after icon creation
 
     # ── Tray icon ───────────────────────────────────────────
@@ -374,7 +454,7 @@ def main():
             language=LANGUAGE,
             beam_size=BEAM_SIZE,
             vad_filter=True,
-            initial_prompt=INITIAL_PROMPT,
+            initial_prompt=build_initial_prompt(),
             vad_parameters=dict(
                 min_silence_duration_ms=300,
                 speech_pad_ms=200,
@@ -434,33 +514,28 @@ def main():
             state["mode"] = "idle"
             return
 
-        # If a release-timer is pending → this is a double-click → go continuous
-        if state["release_timer"]:
-            state["release_timer"].cancel()
-            state["release_timer"] = None
-            state["mode"] = "continuous"
-            log.info("Continuous mode activated.")
-            return
-
         # Normal push-to-talk start
         if state["mode"] == "idle":
             start_recording()
             state["mode"] = "ptt"
 
     def on_release(event):
+        # Release = transcribe immediately (no double-press wait)
         if state["mode"] != "ptt":
-            return  # continuous mode ignores release
+            return
+        state["mode"] = "idle"
+        stop_and_transcribe()
 
-        # Delay transcription — if another press comes within threshold,
-        # on_press will cancel this timer and switch to continuous.
-        def delayed():
-            state["mode"] = "idle"
-            state["release_timer"] = None
+    def on_continuous(event):
+        # CONTINUOUS_HOTKEY toggles continuous: record until pressed again
+        if state["mode"] == "continuous":
             stop_and_transcribe()
-
-        t = threading.Timer(DOUBLE_PRESS_THRESHOLD, delayed)
-        state["release_timer"] = t
-        t.start()
+            state["mode"] = "idle"
+        else:
+            if state["mode"] == "idle":
+                start_recording()
+            state["mode"] = "continuous"
+            log.info("Continuous mode activated.")
 
     # ── Start audio stream ──────────────────────────────────
     stream = sd.InputStream(
@@ -473,11 +548,12 @@ def main():
     )
     stream.start()
 
-    # Bind hotkey
+    # Bind hotkeys
     keyboard.on_press_key(HOTKEY, on_press, suppress=False)
     keyboard.on_release_key(HOTKEY, on_release, suppress=False)
+    keyboard.on_press_key(CONTINUOUS_HOTKEY, on_continuous, suppress=False)
 
-    log.info(f"Ready. Hold {HOTKEY.upper()} to record, double-click for continuous.")
+    log.info(f"Ready. Hold {HOTKEY.upper()} to record, {CONTINUOUS_HOTKEY.upper()} toggles continuous.")
 
     # ── Tray menu ───────────────────────────────────────────
     # Find model cache path for info display
@@ -503,7 +579,7 @@ def main():
         tooltip,
         menu=pystray.Menu(
             pystray.MenuItem("VoiceButton", None, enabled=False),
-            pystray.MenuItem("F9 hold = talk, 2x = continuous", None, enabled=False),
+            pystray.MenuItem(f"{HOTKEY.upper()} hold = talk, {CONTINUOUS_HOTKEY.upper()} = continuous", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f"Model: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
             pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),

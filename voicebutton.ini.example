@@ -1,0 +1,25 @@
+# VoiceButton — per-machine config (optional).
+# Copy to voicebutton.ini next to voicebutton.py (or next to the exe)
+# and uncomment what you want to override. Missing keys = code defaults
+# (medium model, auto GPU detect, Russian, F9/F10, Jabra mic).
+# voicebutton.ini itself is gitignored — each machine keeps its own.
+
+[model]
+# size = medium          ; tiny / base / small / medium / large-v2 / large-v3
+# device = auto          ; auto (detect GPU) / cuda / cpu
+# compute = auto         ; auto (float16 on GPU, int8 on CPU) / int8_float16 / int8 ...
+# beam = 5               ; 1 = fastest, 5 = most accurate
+# language = ru          ; ru / auto
+# cache_dir =            ; empty = HuggingFace default
+
+[audio]
+# mic = Jabra            ; substring match on device name, empty = default
+
+[hotkeys]
+# ptt = f9               ; hold to record
+# continuous = f10       ; press once to toggle continuous recording
+
+[prompt]
+# Punctuation sample + terms are combined into Whisper's initial prompt (~224 tokens).
+# initial_prompt = Привет, как дела? Это пример текста с запятыми, точками и вопросительными знаками.
+# terms = Метраникс, Метран, ПГ Метран, КМ, ЧЗ, ТФВС, САКВ, ФИО, артикул

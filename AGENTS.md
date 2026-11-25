@@ -1,7 +1,7 @@
 # AGENTS.md — VoiceButton
 
 ## Project
-Push-to-talk voice transcription for Windows. Hold F9, speak, release → text pasted into active window at cursor position. Double-click F9 for continuous mode. Runs as system tray icon. Clipboard is preserved.
+Push-to-talk voice transcription for Windows. Hold F9, speak, release → text pasted into active window at cursor position. F10 toggles continuous mode. Runs as system tray icon. Clipboard is preserved.
 
 ## Architecture
 Single-file app: `voicebutton.py`
@@ -13,8 +13,12 @@ Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (wi
 
 ## Key Decisions
 - **Hotkey: F9** — Right Shift caused Windows Sticky Keys popup; Right Alt = AltGr on RU (not detectable); Scroll Lock = OS-handled; F9 is unused and clean
-- **Double-click F9 = continuous mode** — quick press-release-press within 350ms toggles continuous recording until next F9 press. Implemented via release-timer that gets cancelled on second press
+- **F10 = continuous mode** — dedicated key (was double-click F9 with a 0.35s wait on EVERY dictation; now release transcribes immediately)
+- **Per-machine config: voicebutton.ini** — optional INI next to script/exe overrides code defaults (gitignored; see voicebutton.ini.example). Keeps repo and installed copies from diverging: work laptop = small/cpu, home PC = medium/cuda, same code
+- **Domain vocabulary** — VOCABULARY terms (Метраникс, ТФВС, САКВ...) appended to initial_prompt; fixes "Metronics"-type errors. Overridable via ini `terms`
+- **Model warmup at startup** — dummy transcribe on 1s of zeros right after load, so first real dictation isn't slow
 - **System tray** — no console window; green/red mic icon shows status (idle/recording). Exit via tray menu. Logs go to `%TEMP%\voicebutton.log`
+- **Russian forced by default** — LANGUAGE="ru"; "auto" caused English background audio (YouTube) to leak into dictation
 - **Russian punctuation** — initial_prompt with sample punctuated Russian text makes Whisper add commas/periods in dictation
 - **Cursor-position paste via Ctrl+V** — uses keyboard library (not pyautogui) for key simulation. Clipboard saved before paste, restored 300ms after
 - **Mic: Jabra Speak 710** — Realtek default records silence. MIC_DEVICE config supports substring match
@@ -35,19 +39,20 @@ Output: `dist/voicebutton.exe`
 - PyInstaller one-file mode: all DLLs packed into single exe, first run slower (extraction)
 - CUDA Toolkit is NOT required for the ready EXE — the NVIDIA driver alone is enough; cuDNN/cuBLAS ship inside PyInstaller bundle (from source they must be installed separately, see faster-whisper GPU docs)
 
-## Config (top of voicebutton.py)
+## Config (code defaults, overridden by voicebutton.ini)
 | Setting | Default | Notes |
 |---------|---------|-------|
 | MODEL_SIZE | medium | tiny/base/small/medium/large-v2/large-v3 |
-| DEVICE | cuda | cpu alternative for no-GPU |
-| COMPUTE_TYPE | float16 | int8 for CPU |
+| DEVICE | auto | auto=detect GPU, "cuda"/"cpu" to force |
+| COMPUTE_TYPE | auto | auto → float16 on GPU, int8 on CPU |
 | SAMPLE_RATE | 16000 | whisper expects 16kHz |
 | MIC_DEVICE | "Jabra" | substring match on device name, None=default |
-| LANGUAGE | None | None=auto, "ru"=force Russian |
-| BEAM_SIZE | 5 | beam search width |
-| HOTKEY | f9 | push-to-talk trigger key |
-| DOUBLE_PRESS_THRESHOLD | 0.35 | seconds — max gap for double-click continuous mode |
+| LANGUAGE | "ru" | "auto" = detect |
+| BEAM_SIZE | 5 | beam search width (1 = fastest) |
+| HOTKEY | f9 | push-to-talk key (hold) |
+| CONTINUOUS_HOTKEY | f10 | continuous mode toggle |
 | INITIAL_PROMPT | "Привет, как..." | Russian text hint for punctuation |
+| VOCABULARY | ["Метраникс", ...] | domain terms appended to initial_prompt |
 | LOG_FILE | %TEMP%\voicebutton.log | log file path |
 | LOG_MAX_BYTES | 1048576 | 1 MB — log rotation threshold |
 | LOG_BACKUP_COUNT | 3 | number of rotated backup files |
