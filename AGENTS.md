@@ -16,6 +16,7 @@ Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (wi
 - **F10 = continuous mode** — dedicated key (was double-click F9 with a 0.35s wait on EVERY dictation; now release transcribes immediately)
 - **F8 = paste from history** — last 10 dictations kept in memory; each further F8 press goes one step back, new dictation resets position. Tray "History" submenu lists them too. Covers the "focus moved, text landed nowhere" case
 - **Mic level overlay + beeps** — tkinter topmost bar (bottom-right) fed by RMS in the portaudio callback; green = voice, red = clipping. winsound beep 880 Hz on record start, 440 Hz on stop. Both off-able via ini [feedback]
+- **Model picker in tray (GPU-aware advice)** — "Model" submenu: recommend_model() maps VRAM (nvidia-smi) → tiny/base/small/medium/large-v3, marks ★; models over available VRAM disabled. Choosing saves size to voicebutton.ini (comments preserved) and restarts the app (spawn + exit; no hook race — new instance binds hotkeys only after model load)
 - **Per-machine config: voicebutton.ini** — optional INI next to script/exe overrides code defaults (gitignored; see voicebutton.ini.example). Keeps repo and installed copies from diverging: work laptop = small/cpu, home PC = medium/cuda, same code
 - **Domain vocabulary** — VOCABULARY terms (Метраникс, ТФВС, САКВ...) appended to initial_prompt; fixes "Metronics"-type errors. Overridable via ini `terms`
 - **Model warmup at startup** — dummy transcribe on 1s of zeros right after load, so first real dictation isn't slow
