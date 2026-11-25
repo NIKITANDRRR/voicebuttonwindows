@@ -193,6 +193,55 @@ def get_vram_mb():
     return None
 
 
+def recommend_model():
+    """Pick a Whisper size that fits the local hardware. Returns (size, reason)."""
+    vram = get_vram_mb()
+    if vram is None:
+        return ("small", "no NVIDIA GPU — small on CPU int8")
+    gb = vram / 1024
+    if gb >= 10:
+        return ("large-v3", f"{gb:.0f} GB VRAM — large-v3 fits")
+    if gb >= 5:
+        return ("medium", f"{gb:.0f} GB VRAM — medium fits")
+    if gb >= 2.5:
+        return ("small", f"{gb:.0f} GB VRAM — small fits")
+    return ("base", f"{gb:.0f} GB VRAM — base fits")
+
+
+def _save_ini_setting(section, key, value):
+    """Insert or replace a key in voicebutton.ini, preserving comments/format."""
+    try:
+        lines = CONFIG_FILE.read_text(encoding="utf-8").splitlines() if CONFIG_FILE.exists() else []
+    except Exception:
+        lines = []
+    out, in_section, replaced = [], False, False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if in_section and not replaced:
+                out.append(f"{key} = {value}")
+                replaced = True
+            in_section = stripped.lower() == f"[{section}]"
+            out.append(line)
+            continue
+        if (in_section and not replaced and "=" in line
+                and not stripped.startswith("#")
+                and stripped.replace(" ", "").lower().startswith(key + "=")):
+            out.append(f"{key} = {value}")
+            replaced = True
+            continue
+        out.append(line)
+    if in_section and not replaced:
+        out.append(f"{key} = {value}")
+        replaced = True
+    if not replaced:
+        out.append("")
+        out.append(f"[{section}]")
+        out.append(f"{key} = {value}")
+    CONFIG_FILE.write_text("\n".join(out).lstrip() + "\n", encoding="utf-8")
+    log.info(f"Config saved: [{section}] {key} = {value} -> {CONFIG_FILE}")
+
+
 def is_model_cached(model_size):
     """Check if the Whisper model is already downloaded."""
     cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
@@ -276,7 +325,8 @@ def load_model_with_ui(model_size, device, compute_type, download_root):
                 "VoiceButton — Not Enough VRAM",
                 f"Whisper {model_size} requires ~{required_gb} GB VRAM.\n"
                 f"Your GPU has {vram_gb:.0f} GB.\n\n"
-                f"Please use voicebutton-medium.exe instead.",
+                f"Pick a smaller model: tray menu → Model → choose one\n"
+                f"marked ★ (recommended for your GPU).",
             )
             log.error(f"VRAM check failed: {vram_gb:.1f} GB < {required_gb} GB required")
             sys.exit(1)
@@ -679,6 +729,46 @@ def main():
                 paste_text(history["items"][idx])
         return _paste
 
+    def _make_model_switch(size):
+        def _switch(icon, item):
+            if size == MODEL_SIZE:
+                return
+            log.info(f"Model switch: {MODEL_SIZE} -> {size}, restarting...")
+            try:
+                _save_ini_setting("model", "size", size)
+            except Exception as e:
+                log.error(f"Config save failed: {e}")
+                return
+            # spawn replacement (it binds hotkeys only after model load),
+            # then exit this instance cleanly
+            try:
+                flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+                subprocess.Popen([sys.executable], creationflags=flags)
+            except Exception as e:
+                log.error(f"Restart failed: {e} — model applies on next manual start")
+                return
+            on_exit(icon, None)
+        return _switch
+
+    def build_model_menu():
+        """Items for the Model submenu: GPU advice + model picker."""
+        rec, reason = recommend_model()
+        vram = get_vram_mb()
+        items = [
+            pystray.MenuItem(f"Current: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
+            pystray.MenuItem(f"GPU: {reason}", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+        ]
+        for size in ("tiny", "base", "small", "medium", "large-v2", "large-v3"):
+            need = VRAM_MIN_GB.get(size, 0)
+            ok = vram is None or vram >= need * 1024
+            mark = "  ★" if size == rec else ""
+            label = f"{size}{mark}  ({need} GB VRAM, ~{MODEL_DOWNLOAD_GB.get(size, '?')} GB download)"
+            if not ok:
+                label += "  — not enough VRAM"
+            items.append(pystray.MenuItem(label, _make_model_switch(size), enabled=ok and size != MODEL_SIZE))
+        return items
+
     def build_menu():
         items = [
             pystray.MenuItem("VoiceButton", None, enabled=False),
@@ -694,7 +784,7 @@ def main():
             items.append(pystray.Menu("History", *sub))
             items.append(pystray.Menu.SEPARATOR)
         items += [
-            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
+            pystray.Menu("Model", *build_model_menu()),
             pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
             pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
             pystray.Menu.SEPARATOR,

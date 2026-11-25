@@ -99,6 +99,19 @@ and uncomment what you need — the ini wins over code defaults.
 | `OVERLAY_ENABLED` | `true` | Mic level bar overlay bottom-right while recording |
 | `VOCABULARY` | `["Метраникс", ...]` | Domain terms appended to the initial prompt |
 
+## Model selection
+
+Right-click the tray icon → **Model**: the app checks your GPU (via nvidia-smi) and marks
+the recommended size with ★; models that exceed your VRAM are disabled. Picking one
+saves it to `voicebutton.ini` and restarts the app (the new model downloads on first use).
+
+| GPU VRAM | Recommended |
+|----------|-------------|
+| 10 GB+ | large-v3 |
+| 5-10 GB | medium |
+| 2.5-5 GB | small |
+| no NVIDIA GPU | small (CPU int8) |
+
 ## Build from source
 
 ```bash
