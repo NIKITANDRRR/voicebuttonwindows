@@ -40,6 +40,8 @@ Output: `dist/voicebutton.exe`
 - If "Audio is SILENT" — wrong mic device, change MIC_DEVICE in config
 - `vad_filter=True` requires silero_vad onnx in assets — bundled via spec `datas`
 - PyInstaller one-file mode: all DLLs packed into single exe, first run slower (extraction)
+- pystray `Menu(*items)` does NOT accept a title string — a bare "str" among items crashes `_create_menu` with `'str' object has no attribute 'visible'` AFTER the "Ready" log line (app dies before the tray icon shows). Submenus: `MenuItem("Title", Menu(*items))`. Always verify a new build by checking the process stays alive 30+s, not just by the log
+- "Ready" in the log is printed BEFORE the tray menu is built — it is NOT proof the app started; a crash can happen seconds later in `icon.run()`
 - CUDA Toolkit is NOT required for the ready EXE — the NVIDIA driver alone is enough; cuDNN/cuBLAS ship inside PyInstaller bundle (from source they must be installed separately, see faster-whisper GPU docs)
 
 ## Config (code defaults, overridden by voicebutton.ini)
