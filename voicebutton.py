@@ -448,11 +448,40 @@ def load_model_with_ui(model_size, device, compute_type, download_root):
     return result["model"]
 
 
+def acquire_single_instance_lock():
+    """True if we are the only VoiceButton instance. False if one is already
+    running (a second copy would double-hook hotkeys and paste every dictation
+    twice — seen in the wild 25.11)."""
+    if sys.platform != "win32":
+        return True
+    import ctypes
+    ERROR_ALREADY_EXISTS = 183
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW(None, False, "VoiceButton_SingleInstance")
+    return kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+
+
 def main():
     global MODEL_SIZE
     import ctypes
     import keyboard
     import sounddevice as sd
+
+    # One instance only: second launch notifies and exits (mutex lives for
+    # the process lifetime, no cleanup needed)
+    if not acquire_single_instance_lock():
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        print("VoiceButton is already running (check the tray). Exiting.")
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "VoiceButton уже запущен — ищите зелёный значок микрофона в трее.\n"
+            "Это окно сейчас закроется, второй экземпляр запущен не будет "
+            "(иначе каждая диктовка вставлялась бы дважды).",
+            "VoiceButton",
+            0x40,
+        )
+        sys.exit(0)
     import pystray
     from PIL import Image, ImageDraw
 
