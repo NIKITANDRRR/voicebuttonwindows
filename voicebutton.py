@@ -31,6 +31,8 @@ LANGUAGE = "ru"             # "ru" = force Russian, "auto" = detect
 BEAM_SIZE = 5               # beam search width
 HOTKEY = "f9"               # push-to-talk key (hold to record)
 CONTINUOUS_HOTKEY = "f10"   # continuous mode toggle (press once)
+HISTORY_KEY = "f8"          # paste from history (repeated presses go further back)
+HISTORY_SIZE = 10           # recent dictations kept in memory
 
 # Initial prompt gives Whisper a hint to add punctuation in Russian.
 # Without it, Whisper often omits commas and periods in dictation.
@@ -95,7 +97,7 @@ CONFIG_FILE = Path(
 
 def _load_config_file():
     global MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, LANGUAGE, MIC_DEVICE
-    global HOTKEY, CONTINUOUS_HOTKEY, INITIAL_PROMPT, VOCABULARY, MODEL_CACHE_DIR
+    global HOTKEY, CONTINUOUS_HOTKEY, HISTORY_KEY, HISTORY_SIZE, INITIAL_PROMPT, VOCABULARY, MODEL_CACHE_DIR
 
     import configparser
     parser = configparser.ConfigParser()
@@ -119,6 +121,8 @@ def _load_config_file():
 
     HOTKEY = parser.get("hotkeys", "ptt", fallback=HOTKEY).strip().lower()
     CONTINUOUS_HOTKEY = parser.get("hotkeys", "continuous", fallback=CONTINUOUS_HOTKEY).strip().lower()
+    HISTORY_KEY = parser.get("hotkeys", "history", fallback=HISTORY_KEY).strip().lower()
+    HISTORY_SIZE = parser.getint("hotkeys", "history_size", fallback=HISTORY_SIZE)
 
     _prompt = parser.get("prompt", "initial_prompt", fallback="").strip()
     if _prompt:
@@ -388,6 +392,8 @@ def main():
     recording = {"active": False, "frames": [], "lock": threading.Lock()}
     # mode: "idle" | "ptt" (push-to-talk, waiting for release) | "continuous"
     state = {"mode": "idle"}
+    # Last N dictations: items (newest last), index = how far back HISTORY_KEY went
+    history = {"items": [], "index": 0}
     icon_ref = {"icon": None}  # filled after icon creation
 
     # ── Tray icon ───────────────────────────────────────────
@@ -467,6 +473,11 @@ def main():
         log.info(f">> {text}")
 
         if text:
+            history["items"].append(text)
+            if len(history["items"]) > HISTORY_SIZE:
+                history["items"] = history["items"][-HISTORY_SIZE:]
+            history["index"] = 0
+            update_history_menu()
             paste_text(text)
         else:
             log.info("(no speech detected)")
@@ -539,6 +550,18 @@ def main():
             state["mode"] = "continuous"
             log.info("Continuous mode activated.")
 
+    def on_history(event):
+        # HISTORY_KEY re-pastes dictations; each further press goes one step back
+        items = history["items"]
+        if not items:
+            log.info("History is empty.")
+            return
+        i = history["index"] % len(items)
+        text = items[len(items) - 1 - i]
+        history["index"] = i + 1
+        log.info(f"History paste ({i + 1}/{len(items)} back): {text[:60]}")
+        paste_text(text)
+
     # ── Start audio stream ──────────────────────────────────
     stream = sd.InputStream(
         samplerate=SAMPLE_RATE,
@@ -554,8 +577,10 @@ def main():
     keyboard.on_press_key(HOTKEY, on_press, suppress=False)
     keyboard.on_release_key(HOTKEY, on_release, suppress=False)
     keyboard.on_press_key(CONTINUOUS_HOTKEY, on_continuous, suppress=False)
+    keyboard.on_press_key(HISTORY_KEY, on_history, suppress=False)
 
-    log.info(f"Ready. Hold {HOTKEY.upper()} to record, {CONTINUOUS_HOTKEY.upper()} toggles continuous.")
+    log.info(f"Ready. Hold {HOTKEY.upper()} to record, {CONTINUOUS_HOTKEY.upper()} toggles continuous, "
+             f"{HISTORY_KEY.upper()} pastes history.")
 
     # ── Tray menu ───────────────────────────────────────────
     # Find model cache path for info display
@@ -571,6 +596,42 @@ def main():
         keyboard.unhook_all()
         icon.stop()
 
+    def _make_history_paster(idx):
+        def _paste(icon, item):
+            if idx < len(history["items"]):
+                paste_text(history["items"][idx])
+        return _paste
+
+    def build_menu():
+        items = [
+            pystray.MenuItem("VoiceButton", None, enabled=False),
+            pystray.MenuItem(f"{HOTKEY.upper()} hold = talk, {CONTINUOUS_HOTKEY.upper()} = continuous", None, enabled=False),
+            pystray.MenuItem(f"{HISTORY_KEY.upper()} = paste from history ({HISTORY_SIZE} last)", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+        ]
+        if history["items"]:
+            sub = []
+            for pos, txt in enumerate(reversed(history["items"])):
+                label = txt if len(txt) <= 50 else txt[:50] + "..."
+                sub.append(pystray.MenuItem(label, _make_history_paster(len(history["items"]) - 1 - pos)))
+            items.append(pystray.Menu("History", *sub))
+            items.append(pystray.Menu.SEPARATOR)
+        items += [
+            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
+            pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
+            pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Exit", on_exit),
+        ]
+        return pystray.Menu(*items)
+
+    def update_history_menu():
+        if icon_ref["icon"]:
+            try:
+                icon_ref["icon"].menu = build_menu()
+            except Exception as e:
+                log.warning(f"History menu update failed: {e}")
+
     tooltip = "VoiceButton — Ready"
     if cpu_nag:
         tooltip = "VoiceButton — CPU mode (no GPU)"
@@ -579,16 +640,7 @@ def main():
         "VoiceButton",
         mic_icon(False),
         tooltip,
-        menu=pystray.Menu(
-            pystray.MenuItem("VoiceButton", None, enabled=False),
-            pystray.MenuItem(f"{HOTKEY.upper()} hold = talk, {CONTINUOUS_HOTKEY.upper()} = continuous", None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(f"Model: Whisper {MODEL_SIZE} ({device})", None, enabled=False),
-            pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
-            pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Exit", on_exit),
-        ),
+        menu=build_menu(),
     )
     icon_ref["icon"] = icon
 

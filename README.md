@@ -94,6 +94,7 @@ and uncomment what you need — the ini wins over code defaults.
 | `LANGUAGE` | `"ru"` | `"ru"` = force Russian, `"auto"` = detect |
 | `HOTKEY` | `"f9"` | Push-to-talk key (hold) |
 | `CONTINUOUS_HOTKEY` | `"f10"` | Continuous mode toggle |
+| `HISTORY_KEY` | `"f8"` | Paste from history (repeated presses go further back) |
 | `VOCABULARY` | `["Метраникс", ...]` | Domain terms appended to the initial prompt |
 
 ## Build from source

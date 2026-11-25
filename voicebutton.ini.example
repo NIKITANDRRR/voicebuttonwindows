@@ -18,6 +18,8 @@
 [hotkeys]
 # ptt = f9               ; hold to record
 # continuous = f10       ; press once to toggle continuous recording
+# history = f8           ; paste from history (each press goes one step back)
+# history_size = 10      ; number of recent dictations kept
 
 [prompt]
 # Punctuation sample + terms are combined into Whisper's initial prompt (~224 tokens).
