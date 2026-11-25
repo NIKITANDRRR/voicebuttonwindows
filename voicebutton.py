@@ -33,6 +33,8 @@ HOTKEY = "f9"               # push-to-talk key (hold to record)
 CONTINUOUS_HOTKEY = "f10"   # continuous mode toggle (press once)
 HISTORY_KEY = "f8"          # paste from history (repeated presses go further back)
 HISTORY_SIZE = 10           # recent dictations kept in memory
+SOUND_FEEDBACK = True       # beep on record start/stop
+OVERLAY_ENABLED = True      # mic level bar overlay while recording
 
 # Initial prompt gives Whisper a hint to add punctuation in Russian.
 # Without it, Whisper often omits commas and periods in dictation.
@@ -98,6 +100,7 @@ CONFIG_FILE = Path(
 def _load_config_file():
     global MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, LANGUAGE, MIC_DEVICE
     global HOTKEY, CONTINUOUS_HOTKEY, HISTORY_KEY, HISTORY_SIZE, INITIAL_PROMPT, VOCABULARY, MODEL_CACHE_DIR
+    global SOUND_FEEDBACK, OVERLAY_ENABLED
 
     import configparser
     parser = configparser.ConfigParser()
@@ -123,6 +126,9 @@ def _load_config_file():
     CONTINUOUS_HOTKEY = parser.get("hotkeys", "continuous", fallback=CONTINUOUS_HOTKEY).strip().lower()
     HISTORY_KEY = parser.get("hotkeys", "history", fallback=HISTORY_KEY).strip().lower()
     HISTORY_SIZE = parser.getint("hotkeys", "history_size", fallback=HISTORY_SIZE)
+
+    SOUND_FEEDBACK = parser.getboolean("feedback", "sound", fallback=SOUND_FEEDBACK)
+    OVERLAY_ENABLED = parser.getboolean("feedback", "overlay", fallback=OVERLAY_ENABLED)
 
     _prompt = parser.get("prompt", "initial_prompt", fallback="").strip()
     if _prompt:
@@ -394,6 +400,8 @@ def main():
     state = {"mode": "idle"}
     # Last N dictations: items (newest last), index = how far back HISTORY_KEY went
     history = {"items": [], "index": 0}
+    # Mic level overlay: level fed by the audio callback, visible flag by start/stop
+    overlay = {"level": 0.0, "visible": False}
     icon_ref = {"icon": None}  # filled after icon creation
 
     # ── Tray icon ───────────────────────────────────────────
@@ -421,15 +429,36 @@ def main():
     def audio_callback(indata, frames, time_info, status):
         if recording["active"]:
             recording["frames"].append(indata.copy())
+            # feed the level bar (portaudio thread: only cheap math here)
+            block = indata[:, 0]
+            overlay["level"] = float(np.sqrt(np.mean(block ** 2)))
+
+    def play_beep(freq, dur=0.12):
+        """Non-blocking beep; a worker thread so winsound never stalls the hook."""
+        if not SOUND_FEEDBACK:
+            return
+
+        def _b():
+            try:
+                import winsound
+                winsound.Beep(freq, int(dur * 1000))
+            except Exception:
+                pass
+
+        threading.Thread(target=_b, daemon=True).start()
 
     def start_recording():
         recording["active"] = True
         recording["frames"] = []
+        overlay["visible"] = True
+        play_beep(880, 0.10)
         set_tray(True, "Recording...")
         log.info("● Recording...")
 
     def stop_and_transcribe():
         recording["active"] = False
+        overlay["visible"] = False
+        play_beep(440, 0.15)
         set_tray(False, "Transcribing...")
         log.info("Transcribing...")
 
@@ -561,6 +590,54 @@ def main():
         history["index"] = i + 1
         log.info(f"History paste ({i + 1}/{len(items)} back): {text[:60]}")
         paste_text(text)
+
+    # ── Mic level overlay ───────────────────────────────────
+    # Thin always-on-top bar bottom-right: green grows with voice level,
+    # red on clipping. Fed by audio_callback via overlay["level"].
+    def overlay_loop():
+        import tkinter as tk
+
+        W, H = 160, 12
+        root = tk.Tk()
+        root.overrideredirect(True)  # no title bar/border
+        root.attributes("-topmost", True)
+        canvas = tk.Canvas(root, width=W, height=H, bg="#1c1c1c", highlightthickness=0)
+        canvas.pack()
+        bar = canvas.create_rectangle(0, 0, 0, H, fill="#39d353", width=0)
+
+        root.update_idletasks()
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.geometry(f"{W}x{H}+{sw - W - 24}+{sh - H - 96}")
+
+        shown = {"v": False}
+
+        def tick():
+            # speech rms ~0.05-0.15 -> scale x8 so normal voice fills the bar
+            lvl = min(1.0, overlay["level"] * 8.0)
+            w = int(W * lvl)
+            canvas.coords(bar, 0, 0, w, H)
+            canvas.itemconfigure(bar, fill="#f85149" if lvl >= 0.98 else "#39d353")
+            if overlay["visible"] and not shown["v"]:
+                root.deiconify()
+                root.attributes("-topmost", True)
+                shown["v"] = True
+            elif not overlay["visible"] and shown["v"]:
+                root.withdraw()
+                shown["v"] = False
+            root.after(50, tick)
+
+        root.withdraw()
+        tick()
+        root.mainloop()
+
+    def _run_overlay():
+        try:
+            overlay_loop()
+        except Exception as e:
+            log.warning(f"Overlay failed (app continues without it): {e}")
+
+    if OVERLAY_ENABLED:
+        threading.Thread(target=_run_overlay, daemon=True).start()
 
     # ── Start audio stream ──────────────────────────────────
     stream = sd.InputStream(

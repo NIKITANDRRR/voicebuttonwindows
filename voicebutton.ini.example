@@ -25,3 +25,7 @@
 # Punctuation sample + terms are combined into Whisper's initial prompt (~224 tokens).
 # initial_prompt = Привет, как дела? Это пример текста с запятыми, точками и вопросительными знаками.
 # terms = Метраникс, Метран, ПГ Метран, КМ, ЧЗ, ТФВС, САКВ, ФИО, артикул
+
+[feedback]
+# sound = true           ; beep on record start (880) / stop (440)
+# overlay = true         ; mic level bar bottom-right while recording

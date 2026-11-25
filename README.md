@@ -95,6 +95,8 @@ and uncomment what you need — the ini wins over code defaults.
 | `HOTKEY` | `"f9"` | Push-to-talk key (hold) |
 | `CONTINUOUS_HOTKEY` | `"f10"` | Continuous mode toggle |
 | `HISTORY_KEY` | `"f8"` | Paste from history (repeated presses go further back) |
+| `SOUND_FEEDBACK` | `true` | Beep on record start (880 Hz) / stop (440 Hz) |
+| `OVERLAY_ENABLED` | `true` | Mic level bar overlay bottom-right while recording |
 | `VOCABULARY` | `["Метраникс", ...]` | Domain terms appended to the initial prompt |
 
 ## Build from source
