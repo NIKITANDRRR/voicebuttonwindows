@@ -865,10 +865,10 @@ def main():
             for pos, txt in enumerate(reversed(history["items"])):
                 label = txt if len(txt) <= 50 else txt[:50] + "..."
                 sub.append(pystray.MenuItem(label, _make_history_paster(len(history["items"]) - 1 - pos)))
-            items.append(pystray.Menu("History", *sub))
+            items.append(pystray.MenuItem("History", pystray.Menu(*sub)))
             items.append(pystray.Menu.SEPARATOR)
         items += [
-            pystray.Menu("Model", *build_model_menu()),
+            pystray.MenuItem("Model", pystray.Menu(*build_model_menu())),
             pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
             pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
             pystray.Menu.SEPARATOR,
