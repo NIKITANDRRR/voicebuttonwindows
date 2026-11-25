@@ -29,7 +29,7 @@ VoiceButton sits in your system tray and lets you dictate text into **any** appl
 
 - **Hold F9** → records from your mic
 - **Release F9** → transcribes via Whisper and pastes the text at cursor position
-- **Double-click F9** → continuous mode (for long dictation), press F9 again to stop
+- **Press F10** → continuous mode (for long dictation), press F10 again to stop
 - **Clipboard preserved** — your existing clipboard content is saved and restored after paste
 
 ## Features
@@ -81,17 +81,20 @@ Run as **Administrator** (required for keyboard hook).
 
 ## Configuration
 
-Edit the config section at the top of `voicebutton.py`:
+Code defaults live at the top of `voicebutton.py`. For per-machine overrides,
+copy `voicebutton.ini.example` to `voicebutton.ini` next to the script (or exe)
+and uncomment what you need — the ini wins over code defaults.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `MODEL_SIZE` | `"medium"` | Whisper model: tiny/base/small/medium/large-v2/large-v3 |
-| `DEVICE` | `"cuda"` | `"cuda"` (GPU) or `"cpu"` |
-| `COMPUTE_TYPE` | `"float16"` | `float16` for GPU, `int8` for CPU |
+| `DEVICE` | `"auto"` | `auto` (detect GPU), `"cuda"` or `"cpu"` |
+| `COMPUTE_TYPE` | `"auto"` | `auto` = float16 on GPU / int8 on CPU |
 | `MIC_DEVICE` | `"Jabra"` | Mic name substring or `None` for default |
-| `LANGUAGE` | `None` | `None` = auto-detect, `"ru"` = force Russian |
-| `HOTKEY` | `"f9"` | Push-to-talk trigger key |
-| `DOUBLE_PRESS_THRESHOLD` | `0.35` | Seconds — max gap for double-click continuous mode |
+| `LANGUAGE` | `"ru"` | `"ru"` = force Russian, `"auto"` = detect |
+| `HOTKEY` | `"f9"` | Push-to-talk key (hold) |
+| `CONTINUOUS_HOTKEY` | `"f10"` | Continuous mode toggle |
+| `VOCABULARY` | `["Метраникс", ...]` | Domain terms appended to the initial prompt |
 
 ## Build from source
 
