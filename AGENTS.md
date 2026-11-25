@@ -14,6 +14,7 @@ Flow: keyboard hook → sd.InputStream capture → faster-whisper transcribe (wi
 ## Key Decisions
 - **Hotkey: F9** — Right Shift caused Windows Sticky Keys popup; Right Alt = AltGr on RU (not detectable); Scroll Lock = OS-handled; F9 is unused and clean
 - **F10 = continuous mode** — dedicated key (was double-click F9 with a 0.35s wait on EVERY dictation; now release transcribes immediately)
+- **F8 = paste from history** — last 10 dictations kept in memory; each further F8 press goes one step back, new dictation resets position. Tray "History" submenu lists them too. Covers the "focus moved, text landed nowhere" case
 - **Per-machine config: voicebutton.ini** — optional INI next to script/exe overrides code defaults (gitignored; see voicebutton.ini.example). Keeps repo and installed copies from diverging: work laptop = small/cpu, home PC = medium/cuda, same code
 - **Domain vocabulary** — VOCABULARY terms (Метраникс, ТФВС, САКВ...) appended to initial_prompt; fixes "Metronics"-type errors. Overridable via ini `terms`
 - **Model warmup at startup** — dummy transcribe on 1s of zeros right after load, so first real dictation isn't slow
@@ -51,6 +52,8 @@ Output: `dist/voicebutton.exe`
 | BEAM_SIZE | 5 | beam search width (1 = fastest) |
 | HOTKEY | f9 | push-to-talk key (hold) |
 | CONTINUOUS_HOTKEY | f10 | continuous mode toggle |
+| HISTORY_KEY | f8 | paste from history (repeated presses go further back) |
+| HISTORY_SIZE | 10 | dictations kept in memory |
 | INITIAL_PROMPT | "Привет, как..." | Russian text hint for punctuation |
 | VOCABULARY | ["Метраникс", ...] | domain terms appended to initial_prompt |
 | LOG_FILE | %TEMP%\voicebutton.log | log file path |
