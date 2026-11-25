@@ -242,6 +242,77 @@ def _save_ini_setting(section, key, value):
     log.info(f"Config saved: [{section}] {key} = {value} -> {CONFIG_FILE}")
 
 
+def _ini_has_model_size():
+    """True if voicebutton.ini has an active (uncommented) model size — i.e. the user already picked one."""
+    try:
+        import configparser
+        parser = configparser.ConfigParser()
+        if not CONFIG_FILE.exists() or not parser.read(CONFIG_FILE, encoding="utf-8"):
+            return False
+        return parser.has_option("model", "size")
+    except Exception:
+        return False
+
+
+def show_model_chooser():
+    """First-run model picker with GPU advice. Returns chosen size or None (keep default).
+
+    Shown BEFORE the default model downloads, so a fresh machine with a weak GPU
+    doesn't pull 1.5 GB of medium first.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    rec, reason = recommend_model()
+    vram = get_vram_mb()
+    sizes = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
+
+    root = tk.Tk()
+    root.title("VoiceButton — choose model")
+    W, H = 480, 330
+    root.resizable(False, False)
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() - W) // 2
+    y = (root.winfo_screenheight() - H) // 2
+    root.geometry(f"{W}x{H}+{x}+{y}")
+
+    tk.Label(root, text="Choose a Whisper model", font=("Segoe UI", 12, "bold")).pack(pady=(14, 4))
+    tk.Label(root, text=f"Your hardware: {reason}", font=("Segoe UI", 10), fg="gray").pack()
+
+    choice = {"size": None}
+    var = tk.StringVar(value=rec)
+
+    frame = tk.Frame(root)
+    frame.pack(pady=8, fill="x")
+    for s in sizes:
+        need = VRAM_MIN_GB.get(s, 0)
+        ok = vram is None or vram >= need * 1024
+        mark = "  ★ recommended" if s == rec else ""
+        label = f"{s}{mark}   — {need} GB VRAM, ~{MODEL_DOWNLOAD_GB.get(s, '?')} GB download"
+        rb = tk.Radiobutton(
+            frame, text=label, variable=var, value=s,
+            state=tk.NORMAL if ok else tk.DISABLED,
+            anchor="w", justify="left",
+        )
+        rb.pack(fill="x", padx=14, pady=1)
+
+    def _ok():
+        choice["size"] = var.get()
+        root.destroy()
+
+    def _default():
+        root.destroy()  # keep code default
+
+    btns = tk.Frame(root)
+    btns.pack(pady=(2, 12))
+    ttk.Button(btns, text="OK", command=_ok).pack(side="left", padx=6)
+    ttk.Button(btns, text="Use default", command=_default).pack(side="left", padx=6)
+
+    root.protocol("WM_DELETE_WINDOW", _default)
+    root.mainloop()
+    return choice["size"]
+
+
 def is_model_cached(model_size):
     """Check if the Whisper model is already downloaded."""
     cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
@@ -378,6 +449,7 @@ def load_model_with_ui(model_size, device, compute_type, download_root):
 
 
 def main():
+    global MODEL_SIZE
     import ctypes
     import keyboard
     import sounddevice as sd
@@ -413,6 +485,18 @@ def main():
         compute_type = "int8_float16" if device == "cuda" else "int8"
     else:
         compute_type = COMPUTE_TYPE
+
+    # First run on a new machine: pick a model BEFORE the default one
+    # downloads (fresh machine, nothing cached, nothing chosen in ini yet).
+    if not is_model_cached(MODEL_SIZE) and not _ini_has_model_size():
+        log.info("First run: showing model chooser (nothing cached, no ini choice).")
+        chosen = show_model_chooser()
+        if chosen:
+            MODEL_SIZE = chosen
+            try:
+                _save_ini_setting("model", "size", chosen)
+            except Exception as e:
+                log.warning(f"Could not save model choice to ini: {e}")
 
     # Load model (with VRAM check + loading window)
     model = load_model_with_ui(MODEL_SIZE, device, compute_type, MODEL_CACHE_DIR)

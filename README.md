@@ -101,9 +101,12 @@ and uncomment what you need — the ini wins over code defaults.
 
 ## Model selection
 
-Right-click the tray icon → **Model**: the app checks your GPU (via nvidia-smi) and marks
-the recommended size with ★; models that exceed your VRAM are disabled. Picking one
-saves it to `voicebutton.ini` and restarts the app (the new model downloads on first use).
+**First run** (fresh machine, no model downloaded, nothing chosen yet): the app shows
+a model picker BEFORE downloading anything — hardware check, ★ on the recommended size,
+models over your VRAM disabled. The choice is saved to `voicebutton.ini`.
+
+Any time later: right-click the tray icon → **Model** — same advice, same picker;
+choosing a model saves it to `voicebutton.ini` and restarts the app.
 
 | GPU VRAM | Recommended |
 |----------|-------------|
