@@ -39,7 +39,7 @@ VoiceButton sits in your system tray and lets you dictate text into **any** appl
 - **Russian punctuation** — Whisper adds commas, periods, and question marks automatically
 - **System tray app** — no console window, green/red mic icon shows status
 - **Clipboard-safe** — saves and restores your clipboard around paste
-- **Configurable** — mic device, model size, language, hotkey
+- **Configurable** — model, language, hotkeys, mic (tray menus, no file editing)
 
 ## Download
 
@@ -90,7 +90,7 @@ and uncomment what you need — the ini wins over code defaults.
 | `MODEL_SIZE` | `"medium"` | Whisper model: tiny/base/small/medium/large-v2/large-v3 |
 | `DEVICE` | `"auto"` | `auto` (detect GPU), `"cuda"` or `"cpu"` |
 | `COMPUTE_TYPE` | `"auto"` | `auto` = int8_float16 on GPU (3.4x faster) / int8 on CPU |
-| `MIC_DEVICE` | `"Jabra"` | Mic name substring or `None` for default |
+| `MIC_DEVICE` | `None` | System default input (any PC); or name substring, e.g. `Jabra` — also pickable in the tray "Microphone" menu |
 | `LANGUAGE` | `"ru"` | `"ru"` = force Russian, `"auto"` = detect |
 | `HOTKEY` | `"f9"` | Push-to-talk key (hold) |
 | `CONTINUOUS_HOTKEY` | `"f10"` | Continuous mode toggle |

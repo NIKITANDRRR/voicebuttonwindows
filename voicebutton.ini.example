@@ -1,7 +1,7 @@
 # VoiceButton — per-machine config (optional).
 # Copy to voicebutton.ini next to voicebutton.py (or next to the exe)
 # and uncomment what you want to override. Missing keys = code defaults
-# (medium model, auto GPU detect, Russian, F9/F10, Jabra mic).
+# (medium model, auto GPU detect, Russian, F9/F10, system default mic).
 # voicebutton.ini itself is gitignored — each machine keeps its own.
 
 [model]
@@ -13,7 +13,9 @@
 # cache_dir =            ; empty = HuggingFace default
 
 [audio]
-# mic = Jabra            ; substring match on device name, empty = default
+# mic =                  ; empty = system default input (works on any PC);
+                         ; or substring of the device name, e.g. mic = Jabra
+                         ; (selectable from the tray "Microphone" menu too)
 
 [hotkeys]
 # ptt = f9               ; hold to record

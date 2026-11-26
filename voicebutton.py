@@ -26,7 +26,7 @@ MODEL_SIZE = "medium"       # tiny/base/small/medium/large-v2/large-v3
 DEVICE = "auto"             # "auto" (detect GPU), "cuda" or "cpu"
 COMPUTE_TYPE = "auto"       # "auto" (float16 on GPU, int8 on CPU) or explicit
 SAMPLE_RATE = 16000         # whisper expects 16kHz
-MIC_DEVICE = "Jabra"        # None = default, or substring match on device name
+MIC_DEVICE = None           # None = system default input (works on ANY machine), or substring match e.g. "Jabra"
 LANGUAGE = "ru"             # "ru" = force Russian, "auto" = detect
 BEAM_SIZE = 5               # beam search width
 HOTKEY = "f9"               # push-to-talk key (hold to record)
@@ -240,6 +240,26 @@ def _save_ini_setting(section, key, value):
         out.append(f"{key} = {value}")
     CONFIG_FILE.write_text("\n".join(out).lstrip() + "\n", encoding="utf-8")
     log.info(f"Config saved: [{section}] {key} = {value} -> {CONFIG_FILE}")
+
+
+def resolve_mic(pref):
+    """Resolve MIC_DEVICE (None | str substring | int index) to
+    (device_index_or_None, display_name). None = system default input —
+    the safe fallback on machines that don't have the preferred device
+    (a failed substring match must NOT leak a string into InputStream)."""
+    try:
+        import sounddevice as sd
+        if pref is None or (isinstance(pref, str) and not pref.strip()):
+            return None, "System default"
+        if isinstance(pref, int):
+            return pref, sd.query_devices(pref)["name"]
+        pref_l = str(pref).strip().lower()
+        for i, d in enumerate(sd.query_devices()):
+            if d["max_input_channels"] > 0 and pref_l in d["name"].lower():
+                return i, d["name"]
+        return None, "System default"
+    except Exception:
+        return None, "System default"
 
 
 def _ini_has_model_size():
@@ -546,16 +566,16 @@ def main():
     else:
         cpu_nag = False
 
-    # Resolve mic device
-    mic_dev = MIC_DEVICE
-    if mic_dev is not None and isinstance(mic_dev, str):
-        for i, d in enumerate(sd.query_devices()):
-            if d["max_input_channels"] > 0 and mic_dev.lower() in d["name"].lower():
-                mic_dev = i
-                log.info(f"Mic matched: #{i} {sd.query_devices(i)['name']}")
-                break
+    # Resolve mic device: None = system default (works on ANY machine),
+    # str = substring match (ini), int = exact index. No match -> default.
+    mic_dev, mic_name = resolve_mic(MIC_DEVICE)
+    if MIC_DEVICE:
+        if mic_dev is None:
+            log.warning(f"Mic '{MIC_DEVICE}' not found — using system default input")
         else:
-            log.warning(f"Mic '{MIC_DEVICE}' not found, using default")
+            log.info(f"Mic matched: #{mic_dev} {mic_name}")
+    else:
+        log.info(f"Mic: system default input #{sd.default.device[0]}")
 
     # ── State ───────────────────────────────────────────────
     recording = {"active": False, "frames": [], "lock": threading.Lock()}
@@ -842,25 +862,36 @@ def main():
                 paste_text(history["items"][idx])
         return _paste
 
+    def _restart_app(icon):
+        """Spawn a replacement instance and exit this one. No hook race:
+        the new instance binds hotkeys only after its model has loaded."""
+        try:
+            flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+            subprocess.Popen([sys.executable], creationflags=flags)
+        except Exception as e:
+            log.error(f"Restart failed: {e} — change applies on next manual start")
+            return False
+        on_exit(icon, None)
+        return True
+
+    def _make_ini_switch(section, key, value):
+        """Tray-click handler: save a setting to voicebutton.ini, restart to apply."""
+        def _switch(icon, item):
+            log.info(f"Config switch: [{section}] {key} = {value!r}, restarting...")
+            try:
+                _save_ini_setting(section, key, value)
+            except Exception as e:
+                log.error(f"Config save failed: {e}")
+                return
+            _restart_app(icon)
+        return _switch
+
     def _make_model_switch(size):
         def _switch(icon, item):
             if size == MODEL_SIZE:
                 return
-            log.info(f"Model switch: {MODEL_SIZE} -> {size}, restarting...")
-            try:
-                _save_ini_setting("model", "size", size)
-            except Exception as e:
-                log.error(f"Config save failed: {e}")
-                return
-            # spawn replacement (it binds hotkeys only after model load),
-            # then exit this instance cleanly
-            try:
-                flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
-                subprocess.Popen([sys.executable], creationflags=flags)
-            except Exception as e:
-                log.error(f"Restart failed: {e} — model applies on next manual start")
-                return
-            on_exit(icon, None)
+            log.info(f"Model switch: {MODEL_SIZE} -> {size}")
+            _make_ini_switch("model", "size", size)(icon, item)
         return _switch
 
     def build_model_menu():
@@ -882,6 +913,28 @@ def main():
             items.append(pystray.MenuItem(label, _make_model_switch(size), enabled=ok and size != MODEL_SIZE))
         return items
 
+    def build_mic_menu():
+        """Items for the Microphone submenu: current device + pick from the list."""
+        items = [pystray.MenuItem(f"Current: {mic_name}", None, enabled=False)]
+        if mic_dev is None:
+            items.append(pystray.MenuItem("System default (current)", None, enabled=False))
+        else:
+            items.append(pystray.MenuItem("System default", _make_ini_switch("audio", "mic", "")))
+        items.append(pystray.Menu.SEPARATOR)
+        try:
+            devs = sd.query_devices()
+        except Exception:
+            devs = []
+        for i, d in enumerate(devs):
+            if d["max_input_channels"] <= 0:
+                continue
+            name = d["name"]
+            if i == mic_dev:
+                items.append(pystray.MenuItem(name[:48] + "  (current)", None, enabled=False))
+            else:
+                items.append(pystray.MenuItem(name[:48], _make_ini_switch("audio", "mic", name)))
+        return items
+
     def build_menu():
         items = [
             pystray.MenuItem("VoiceButton", None, enabled=False),
@@ -898,6 +951,7 @@ def main():
             items.append(pystray.Menu.SEPARATOR)
         items += [
             pystray.MenuItem("Model", pystray.Menu(*build_model_menu())),
+            pystray.MenuItem("Microphone", pystray.Menu(*build_mic_menu())),
             pystray.MenuItem(f"Cache: {cache_display}", None, enabled=False),
             pystray.MenuItem(f"Log: {LOG_FILE}", None, enabled=False),
             pystray.Menu.SEPARATOR,
